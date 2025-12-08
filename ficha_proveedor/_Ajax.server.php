@@ -1127,78 +1127,43 @@ function genera_formulario_cliente($sAccion = 'nuevo', $aForm = '', $cod, $pedi)
         ";
 
         $usaUAFE = consulta_string($sqlUafeEmp, 'emmpr_uafe_cprov', $oCon, 'f');
-        $oReturn->script("
-            console.log('%cline 1: VALOR RAW DE usaUAFE = ' + JSON.stringify('$usaUAFE'), 'color:yellow;font-weight:bold');
-        ");
 
-        //------------------------------------------------------------------------------
-        //  FIN VALIDACIÓN UAFE PARA HABILITAR/DESHABILITAR ESTADO
-        //------------------------------------------------------------------------------
+        // Determina si los radios deben bloquearse según la configuración y los documentos UAFE
+        $bloquearEstado = ($usaUAFE == 't');
 
-        //------------------------------------------------------------------------------
-    //  BLOQUE UAFE: BLOQUEAR/HABILITAR ESTADO EN EDICIÓN SEGÚN DOCUMENTOS
-    //------------------------------------------------------------------------------
+        if ($sAccion == 'editar' && $usaUAFE == 't' && $cod > 0) {
+            $sqlUafeDocs = "
+                SELECT au.id, adj.estado
+                FROM comercial.archivos_uafe au
+                LEFT JOIN comercial.adjuntos_clpv adj
+                    ON adj.id_archivo_uafe = au.id
+                    AND adj.id_clpv = $cod
+                    AND adj.id_empresa = $idempresa
+                    AND adj.estado <> 'AN'
+                WHERE au.empr_cod_empr = $idempresa
+                AND au.estado = 'AC';
+            ";
 
-    if ($sAccion == 'editar' && $usaUAFE == 't') {
+            $resultUafe = $oCon->query($sqlUafeDocs);
 
-        $sqlUafeDocs = "
-            SELECT estado
-            FROM comercial.adjuntos_clpv
-            WHERE id_clpv = $cod;
-        ";
+            $hayDefinicionesUafe = false;
+            $faltanAprobados = false;
 
-        $resultUafe = $oCon->query($sqlUafeDocs);
+            if ($resultUafe) {
+                while ($row = $oCon->fetch($resultUafe)) {
+                    $hayDefinicionesUafe = true;
 
-        $hayPendiente = false;
-        $haySuspendido = false;
-        $totalDocs = 0;
-        $totalAprobados = 0;
-
-        while ($row = $oCon->fetch($resultUafe)) {
-            $totalDocs++;
-
-            if ($row['estado'] == 'PE') {
-                $hayPendiente = true;
+                    if (trim($row['estado']) !== 'AC') {
+                        $faltanAprobados = true;
+                    }
+                }
             }
 
-            if ($row['estado'] == 'S') {
-                $haySuspendido = true;
-            }
-
-            if ($row['estado'] == 'AC') {
-                $totalAprobados++;
+            if ($hayDefinicionesUafe && !$faltanAprobados) {
+                // Todos los documentos requeridos están aprobados
+                $bloquearEstado = false;
             }
         }
-
-        $oReturn->script("console.log('%cDOCS UAFE → Total: $totalDocs, Aprobados: $totalAprobados','color:blue;font-weight:bold');");
-
-        // Caso 1: documentos pendientes o suspendidos → BLOQUEAR
-        if ($hayPendiente || $haySuspendido) {
-
-            $oReturn->script("
-                console.log('%cDocumentos PE/S → BLOQUEAR estado','color:red;font-weight:bold');
-                setTimeout(function(){ habilitarEstadoProveedor(true); }, 200);
-            ");
-
-        } else {
-
-            // Caso 2: todos aprobados → HABILITAR
-            if ($totalDocs > 0 && $totalDocs == $totalAprobados) {
-
-                $oReturn->script("
-                    console.log('%cTodos AC → HABILITAR estado','color:green;font-weight:bold');
-                    setTimeout(function(){ habilitarEstadoProveedor(false); }, 200);
-                ");
-
-            } else {
-                // Caso raro: sin documentos → habilitar
-                $oReturn->script("
-                    console.log('%cSin documentos UAFE → habilitar por default','color:orange;font-weight:bold');
-                    setTimeout(function(){ habilitarEstadoProveedor(false); }, 200);
-                ");
-            }
-        }
-    }
 
         //variable del chekc del web service
         $S_URL_API_SRI_SN = $_SESSION['S_URL_API_SRI_SN'];
@@ -1497,40 +1462,15 @@ function genera_formulario_cliente($sAccion = 'nuevo', $aForm = '', $cod, $pedi)
         $oReturn->assign("divFormularioCli", "innerHTML", $sHtml);
         $oReturn->script("console.log('DEBUG: FORMULARIO GENERADO');");
 
-        $oReturn->script("console.log('ACCION REAL = [$sAccion]');");
-        $oReturn->script("console.log('usaUAFE = [$usaUAFE]');");
-
+        $estadoBloqueoJs = $bloquearEstado ? 'true' : 'false';
 
         $oReturn->script("
-            console.log('%cline 2: Evaluando condicional…','color:cyan;font-weight:bold');
-            console.log('%c  sAccion: $sAccion','color:cyan');
-            console.log('%c  usaUAFE: $usaUAFE  (tipo: " . gettype($usaUAFE) . ")','color:cyan');
-            console.log('%c  Condicion (usaUAFE == \"t\"): ' + (" . ($usaUAFE == 't' ? 'true' : 'false') . "), 'color:cyan');
+            console.log('%cConfiguración UAFE → ' + '$usaUAFE', 'color:cyan;font-weight:bold');
+            console.log('Acción actual: $sAccion');
+            var bloquearEstado = $estadoBloqueoJs;
+            console.log('Bloqueo de estado: ' + (bloquearEstado ? 'habilitado' : 'deshabilitado'));
+            setTimeout(function(){ habilitarEstadoProveedor(bloquearEstado); }, 200);
         ");
-
-
-
-        if ($sAccion == 'nuevo' && $usaUAFE == 't') {
-
-            $oReturn->script("
-                console.log('%cline 3: ENTRÓ AL IF DE BLOQUEO', 'color:lime;font-weight:bold');
-            ");
-
-            $oReturn->script("
-                console.log('UAFE Nuevo: Bloqueando radios…');
-                setTimeout(function(){
-                    try {
-                        habilitarEstadoProveedor(true);
-                        console.log('%cBloqueo aplicado correctamente','color:orange;font-weight:bold');
-                    } catch(e){
-                        console.log('ERROR bloqueo nuevo:', e);
-                    }
-                }, 200);
-            ");
-
-        } else {
-            $oReturn->script("console.log('%cline 3: NO ENTRÓ AL IF (no se bloquea)', 'color:red;font-weight:bold');");
-        }
 
 
 
@@ -7197,7 +7137,7 @@ function validarEstadoUAFEProveedor($id_clpv)
 
     if ($usaUAFE != 't') {
         // UAFE deshabilitado - radios siempre habilitados
-        $oReturn->script("habilitarEstadoProveedor(true);");
+        $oReturn->script("habilitarEstadoProveedor(false);");
         return $oReturn;
     }
 
@@ -7205,64 +7145,39 @@ function validarEstadoUAFEProveedor($id_clpv)
     // 2. OBTENER DOCUMENTOS UAFE DEL PROVEEDOR
     //----------------------------------------------------------
     $sql = "
-        SELECT estado, fecha_vencimiento
-        FROM comercial.adjuntos_clpv
-        WHERE id_clpv = $id_clpv
-          AND id_empresa = $idempresa
-          AND id_archivo_uafe IS NOT NULL
-          AND estado <> 'AN'
+        SELECT au.id, adj.estado
+        FROM comercial.archivos_uafe au
+        LEFT JOIN comercial.adjuntos_clpv adj
+            ON adj.id_archivo_uafe = au.id
+            AND adj.id_clpv = $id_clpv
+            AND adj.id_empresa = $idempresa
+            AND adj.estado <> 'AN'
+        WHERE au.empr_cod_empr = $idempresa
+          AND au.estado = 'AC'
     ";
 
-    $todosAprobados = true;
-    $tieneDocumentos = false;
-    $hayVencidos = false;
-
-    $hoy = date('Y-m-d');
+    $hayDefinicionesUafe = false;
+    $faltanAprobados = false;
 
     if ($oCon->Query($sql) && $oCon->NumFilas() > 0) {
 
-        $tieneDocumentos = true;
-
         do {
+            $hayDefinicionesUafe = true;
 
-            $estado = trim($oCon->f('estado'));
-            $venc = $oCon->f('fecha_vencimiento');
-
-            // Documento NO aprobado
-            if ($estado !== 'AC') {
-                $todosAprobados = false;
-            }
-
-            // Documento vencido
-            if (!empty($venc) && $venc < $hoy) {
-                $hayVencidos = true;
+            if (trim($oCon->f('estado')) !== 'AC') {
+                $faltanAprobados = true;
             }
 
         } while ($oCon->SiguienteRegistro());
-
-    } else {
-        // No tiene UAFE → bloquear
-        $todosAprobados = false;
     }
 
-    //----------------------------------------------------------
-    // 3. REGLAS DE NEGOCIO UAFE
-    //----------------------------------------------------------
+    $bloquear = true;
 
-    // Regla 1: Si algún documento está vencido → bloquear
-    if ($hayVencidos) {
-        $oReturn->script("habilitarEstadoProveedor(false);");
-        return $oReturn;
+    if ($hayDefinicionesUafe && !$faltanAprobados) {
+        $bloquear = false;
     }
 
-    // Regla 2: Si NO todos están AC → bloquear
-    if (!$todosAprobados) {
-        $oReturn->script("habilitarEstadoProveedor(false);");
-        return $oReturn;
-    }
-
-    // Regla 3: Si todos aprobados (AC y no vencidos) → habilitar
-    $oReturn->script("habilitarEstadoProveedor(true);");
+    $oReturn->script("habilitarEstadoProveedor(" . ($bloquear ? 'true' : 'false') . ");");
 
     return $oReturn;
 }
@@ -8015,7 +7930,7 @@ function guardarAdjuntosUAFE($id_clpv)
     if (!$todosAC) {
 
         // BLOQUEAR RADIOS
-        $oReturn->script("habilitarEstadoProveedor(false);");
+        $oReturn->script("habilitarEstadoProveedor(true);");
 
         $oReturn->script("
             Swal.fire({
@@ -8040,7 +7955,7 @@ function guardarAdjuntosUAFE($id_clpv)
     $oCon->Query($sqlUpd);
 
     // HABILITAR RADIOS
-    $oReturn->script("habilitarEstadoProveedor(true);");
+    $oReturn->script("habilitarEstadoProveedor(false);");
 
     //CONFIRMACIÓN
     $oReturn->script("
