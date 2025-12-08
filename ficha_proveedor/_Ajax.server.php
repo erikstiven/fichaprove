@@ -1136,69 +1136,16 @@ function genera_formulario_cliente($sAccion = 'nuevo', $aForm = '', $cod, $pedi)
         //------------------------------------------------------------------------------
 
         //------------------------------------------------------------------------------
-    //  BLOQUE UAFE: BLOQUEAR/HABILITAR ESTADO EN EDICIÓN SEGÚN DOCUMENTOS
-    //------------------------------------------------------------------------------
+        //  BLOQUE UAFE: BLOQUEAR/HABILITAR ESTADO EN EDICIÓN SEGÚN DOCUMENTOS
+        //------------------------------------------------------------------------------
 
-    if ($sAccion == 'editar' && $usaUAFE == 't') {
+        if ($sAccion == 'editar' && $usaUAFE == 't') {
+            $documentosUAFECompletos = documentosUafeCompletos($oCon, $idempresa, $cod);
 
-        $sqlUafeDocs = "
-            SELECT estado
-            FROM comercial.adjuntos_clpv
-            WHERE id_clpv = $cod;
-        ";
-
-        $resultUafe = $oCon->query($sqlUafeDocs);
-
-        $hayPendiente = false;
-        $haySuspendido = false;
-        $totalDocs = 0;
-        $totalAprobados = 0;
-
-        while ($row = $oCon->fetch($resultUafe)) {
-            $totalDocs++;
-
-            if ($row['estado'] == 'PE') {
-                $hayPendiente = true;
-            }
-
-            if ($row['estado'] == 'S') {
-                $haySuspendido = true;
-            }
-
-            if ($row['estado'] == 'AC') {
-                $totalAprobados++;
-            }
+            $oReturn->script(
+                "setTimeout(function(){ habilitarEstadoProveedor(" . ($documentosUAFECompletos ? 'false' : 'true') . "); }, 200);"
+            );
         }
-
-        $oReturn->script("console.log('%cDOCS UAFE → Total: $totalDocs, Aprobados: $totalAprobados','color:blue;font-weight:bold');");
-
-        // Caso 1: documentos pendientes o suspendidos → BLOQUEAR
-        if ($hayPendiente || $haySuspendido) {
-
-            $oReturn->script("
-                console.log('%cDocumentos PE/S → BLOQUEAR estado','color:red;font-weight:bold');
-                setTimeout(function(){ habilitarEstadoProveedor(true); }, 200);
-            ");
-
-        } else {
-
-            // Caso 2: todos aprobados → HABILITAR
-            if ($totalDocs > 0 && $totalDocs == $totalAprobados) {
-
-                $oReturn->script("
-                    console.log('%cTodos AC → HABILITAR estado','color:green;font-weight:bold');
-                    setTimeout(function(){ habilitarEstadoProveedor(false); }, 200);
-                ");
-
-            } else {
-                // Caso raro: sin documentos → habilitar
-                $oReturn->script("
-                    console.log('%cSin documentos UAFE → habilitar por default','color:orange;font-weight:bold');
-                    setTimeout(function(){ habilitarEstadoProveedor(false); }, 200);
-                ");
-            }
-        }
-    }
 
         //variable del chekc del web service
         $S_URL_API_SRI_SN = $_SESSION['S_URL_API_SRI_SN'];
@@ -1529,6 +1476,7 @@ function genera_formulario_cliente($sAccion = 'nuevo', $aForm = '', $cod, $pedi)
             ");
 
         } else {
+            $oReturn->script("setTimeout(function(){ habilitarEstadoProveedor(false); }, 200);");
             $oReturn->script("console.log('%cline 3: NO ENTRÓ AL IF (no se bloquea)', 'color:red;font-weight:bold');");
         }
 
@@ -7197,74 +7145,65 @@ function validarEstadoUAFEProveedor($id_clpv)
 
     if ($usaUAFE != 't') {
         // UAFE deshabilitado - radios siempre habilitados
-        $oReturn->script("habilitarEstadoProveedor(true);");
+        $oReturn->script("habilitarEstadoProveedor(false);");
         return $oReturn;
     }
 
-    //----------------------------------------------------------
-    // 2. OBTENER DOCUMENTOS UAFE DEL PROVEEDOR
-    //----------------------------------------------------------
-    $sql = "
-        SELECT estado, fecha_vencimiento
+    $documentosCompletos = documentosUafeCompletos($oCon, $idempresa, $id_clpv);
+
+    $oReturn->script("habilitarEstadoProveedor(" . ($documentosCompletos ? 'false' : 'true') . ");");
+
+    return $oReturn;
+}
+
+/**
+ * Verifica que todos los documentos UAFE definidos para la empresa estén adjuntos
+ * y aprobados (estado = 'AC') para el proveedor indicado.
+ */
+function documentosUafeCompletos($oCon, $idempresa, $id_clpv)
+{
+    $requeridos = array();
+
+    $sqlRequeridos = "
+        SELECT id
+        FROM comercial.archivos_uafe
+        WHERE empr_cod_empr = $idempresa
+          AND estado = 'AC';
+    ";
+
+    if ($oCon->Query($sqlRequeridos) && $oCon->NumFilas() > 0) {
+        do {
+            $requeridos[] = $oCon->f('id');
+        } while ($oCon->SiguienteRegistro());
+    } else {
+        // Si no hay documentos configurados no se exige validación adicional
+        return true;
+    }
+
+    $sqlAdjuntos = "
+        SELECT id_archivo_uafe, estado
         FROM comercial.adjuntos_clpv
         WHERE id_clpv = $id_clpv
           AND id_empresa = $idempresa
           AND id_archivo_uafe IS NOT NULL
-          AND estado <> 'AN'
+          AND estado <> 'AN';
     ";
 
-    $todosAprobados = true;
-    $tieneDocumentos = false;
-    $hayVencidos = false;
+    $adjuntos = array();
 
-    $hoy = date('Y-m-d');
-
-    if ($oCon->Query($sql) && $oCon->NumFilas() > 0) {
-
-        $tieneDocumentos = true;
-
+    if ($oCon->Query($sqlAdjuntos) && $oCon->NumFilas() > 0) {
         do {
-
-            $estado = trim($oCon->f('estado'));
-            $venc = $oCon->f('fecha_vencimiento');
-
-            // Documento NO aprobado
-            if ($estado !== 'AC') {
-                $todosAprobados = false;
-            }
-
-            // Documento vencido
-            if (!empty($venc) && $venc < $hoy) {
-                $hayVencidos = true;
-            }
-
+            $adjuntos[$oCon->f('id_archivo_uafe')] = trim($oCon->f('estado'));
         } while ($oCon->SiguienteRegistro());
-
-    } else {
-        // No tiene UAFE → bloquear
-        $todosAprobados = false;
     }
 
-    //----------------------------------------------------------
-    // 3. REGLAS DE NEGOCIO UAFE
-    //----------------------------------------------------------
-
-    // Regla 1: Si algún documento está vencido → bloquear
-    if ($hayVencidos) {
-        $oReturn->script("habilitarEstadoProveedor(false);");
-        return $oReturn;
+    foreach ($requeridos as $reqId) {
+        if (!isset($adjuntos[$reqId]) || $adjuntos[$reqId] !== 'AC') {
+            return false;
+        }
     }
 
-    // Regla 2: Si NO todos están AC → bloquear
-    if (!$todosAprobados) {
-        $oReturn->script("habilitarEstadoProveedor(false);");
-        return $oReturn;
-    }
-
-    // Regla 3: Si todos aprobados (AC y no vencidos) → habilitar
-    $oReturn->script("habilitarEstadoProveedor(true);");
-
-    return $oReturn;
+    return true;
 }
 
 
