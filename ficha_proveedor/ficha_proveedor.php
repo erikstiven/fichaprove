@@ -253,18 +253,14 @@ if (isset($_REQUEST['codpedi'])) {
         }
 
         function editar(estado) {
+            let AC = document.getElementById("AC");
+            let SU = document.getElementById("SU");
+            let PE = document.getElementById("PE");
 
-            // alert(estado);
-
-            var a = '#' + estado;
-
-            $(a).prop("checked", true);
-
+            if (!AC.disabled) AC.checked = (estado === "AC" || estado === "A");
+            if (!SU.disabled) SU.checked = (estado === "SU" || estado === "S");
+            if (!PE.disabled) PE.checked = (estado === "PE" || estado === "P");
         }
-
-        document.getElementById('id_cuenta').value = id;
-
-
 
         function cerrar() {
             parent.CloseAjaxWin();
@@ -288,7 +284,6 @@ if (isset($_REQUEST['codpedi'])) {
 
             }
         }
-
 
         function copiar_nombre() {
             var val = document.getElementById('nombre').value;
@@ -340,7 +335,6 @@ if (isset($_REQUEST['codpedi'])) {
             xajax_listaProdServCliente(xajax.getFormValues("form1"));
             xajax_listaDsctoLinpCliente(xajax.getFormValues("form1"));
         }
-
 
         function copiar_nombre_() {
             var val = document.getElementById('nombre_').value;
@@ -829,7 +823,8 @@ if (isset($_REQUEST['codpedi'])) {
             xajax_verifica_tipo_mapa(lat, lont, xajax.getFormValues("form1"));
         }
 
-        function agregarArchivo() {
+		/*function agregarArchivo() {
+			//alert("agregarArchivo funciona");
             var titulo = $("#titulo").val();
             var archivo = $("#archivo").val();
             if (titulo != '' && archivo != '') {
@@ -838,6 +833,59 @@ if (isset($_REQUEST['codpedi'])) {
                 alert("Ingrese Titulo, Adjunto para continuar...!");
             }
 
+        }*/
+        //----------------------------------------------------------------
+        //INICIO FUNCION AGREGAR ARCHIVO AL DAR CLCIK EN AGREGAR 
+        //----------------------------------------------------------------
+        function agregarArchivo() {
+
+            var tipo = $("#tipo_adj").val();// 0=NORMAL, 1=UAFE
+            var titulo = $("#titulo").val();
+            var archivo = $("#archivo").val();
+            var docUafe = $("#id_archivo_uafe").val();
+
+            // Validación por tipo
+            if (tipo == "0") { // NORMAL
+                if (titulo.trim() == "") {
+                    alert("Debe ingresar un Título para el documento.");
+                    return;
+                }
+            } else if (tipo == "1") { // UAFE
+                if (docUafe == "" || docUafe == null) {
+                    alert("Debe seleccionar el Documento UAFE.");
+                    return;
+                }
+            }
+
+            // Validación de archivo
+            if (archivo == "") {
+                alert("Debe seleccionar un archivo.");
+                return;
+            }
+
+            // Llamar XAJAX normalmente
+            xajax_agrega_modifica_gridAdj(0, xajax.getFormValues("form1"), '', '');
+        }
+        //----------------------------------------------------------------
+        //FIN FUNCION AGREGAR ARCHIVO AL DAR CLCIK EN AGREGAR 
+        //----------------------------------------------------------------
+
+        function eliminarArchivoUAFE(id_uafe, id_clpv, id_adj) {
+              Swal.fire({
+                title: 'Estas seguro que deseas eliminar este archivo',
+                text: "",
+                type: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#3085d6',
+                cancelButtonColor: '#d33',
+                confirmButtonText: 'Aceptar',
+                allowOutsideClick: false,
+                width: '40%',
+            }).then((result) => {
+                if (result.value) {
+                    xajax_eliminarArchivoUAFE(id_uafe, id_clpv, id_adj);
+                }
+            });
         }
 
         function guardarAdjuntos() {
@@ -856,6 +904,14 @@ if (isset($_REQUEST['codpedi'])) {
             } else {
                 alert("Seleccione Cliente para continuar...!");
             }
+        }
+
+        // Consultar documentos UAFE del proveedor seleccionado
+        function consultarAdjuntosUafe() {
+            console.log("CLICK: ejecutar UAFE");
+            console.log("Cliente =", $("#codigoCliente").val());
+
+            xajax_consultarAdjuntosUafe(xajax.getFormValues("form1"));
         }
 
         function dowloand(ruta) {
@@ -880,29 +936,41 @@ if (isset($_REQUEST['codpedi'])) {
                 }
             });
         }
+
+        function guardarAdjuntosUAFE() {
+            let id_clpv = document.getElementById("codigoCliente").value;
+            xajax_guardarAdjuntosUAFE(id_clpv);
+        }
+
     </script>
 
     <script>
-       function habilitarEstadoProveedor(bloquear) {
-            console.log("Ejecutando habilitarEstadoProveedor. bloquear=", bloquear);
+        function cambiarTipoAdjunto() {
 
-            const radios = document.querySelectorAll('input[name="estado"]');
+            var tipo = $("#tipo_adj").val();
 
-            radios.forEach(r => {
-                r.disabled = bloquear;
-            });
-
-            if (bloquear) {
-                document.getElementById("PE").checked = true;
+            if (tipo == "1") {   // UAFE
+                $("#titulo").prop("disabled", true);
+                $("#fila_uafe").show();
+            } else {             // NORMAL
+                $("#titulo").prop("disabled", false);
+                $("#fila_uafe").hide();
             }
-
-            console.log("Radios de estado " + (bloquear ? "bloqueados" : "habilitados"));
         }
 
-        console.log("DEBUG: habilitarEstadoProveedor cargada:", typeof habilitarEstadoProveedor);
+        $(document).ready(function(){
+            cambiarTipoAdjunto();
+            $("#tipo_adj").on('change', cambiarTipoAdjunto);
+        });
+
+        function cambiarEstadoUafe(id_uafe, id_clpv, checked) {
+            var valor = checked ? 1 : 0;
+            xajax_cambiarEstadoUafe(id_uafe, id_clpv, valor);
+        }
+    </script>
 
 
-
+    <script>
         var marker; //variable del marcador
         var coords = {}; //coordenadas obtenidas con la geolocalización
 
@@ -1091,7 +1159,6 @@ if (isset($_REQUEST['codpedi'])) {
             });
         }
 
-
         function eliminarCoa(coa_cod_coa) {
             Swal.fire({
                 title: 'Estas seguro que deseas borrar este reporte de autorizacion ?',
@@ -1124,8 +1191,6 @@ if (isset($_REQUEST['codpedi'])) {
                 xajax_autocompletar_infomacion_cliente(tipo_identificacion, numero);
             }
         }
-
-
 
         // --------------------------------------------------------------------------------------
         // MAPA DE STREET MAPS
@@ -1241,7 +1306,17 @@ if (isset($_REQUEST['codpedi'])) {
             }
         }
 
-
+        // Abre el modal
+        
+        function enviar_mail(){
+			document.getElementById('miModal').innerHTML = '';
+			$("#miModal").modal("show");
+			xajax_enviar_mail(xajax.getFormValues("form1"));
+		}
+		
+		function enviaEmail(correo_destino){
+			xajax_enviaEmail(xajax.getFormValues("form1"), correo_destino);
+		}
 
         // --------------------------------------------------------------------------------------
         // FIN MAPA DE STREET MAPS
@@ -1278,16 +1353,19 @@ if (isset($_REQUEST['codpedi'])) {
 
     <!--DIBUJA FORMULARIO FILTRO-->
 
-    <body onload='javascript:cambiarPestanna(pestanas, pestana1);'>    
-            
+    <body onload='javascript:cambiarPestanna(pestanas, pestana1);'>
         <div class="row">
             <form id="form1" name="form1" action="javascript:void(null);">
-                <div class="row"></div>
+                <div class="row">
+                </div>
+
                 <div class="col-md-5">
                     <input class="form-control" type="hidden" id="lon" name="lon">
                     <input class="form-control" type="hidden" id="la" name="la">
                 </div>
-                <div class="row"></div>
+
+                <div class="row">
+                </div>
 
                 <div id="pestanas">
                     <ul id="lista">
@@ -1301,6 +1379,7 @@ if (isset($_REQUEST['codpedi'])) {
                         <li id="pestana8"><a href='javascript:cambiarPestanna(pestanas,pestana8);'>ADJUNTOS</a></li>
                     </ul>
                 </div>
+
                 <div id="contenidopestanas">
                     <div id="cpestana1"></div>
                     <div id="tpestana1" class="main-row col-md-12">
@@ -1364,14 +1443,22 @@ if (isset($_REQUEST['codpedi'])) {
                     <div id="tpestana8" style="width:99%; height:98%; overflow: scroll;">
                         <div class="col-md-6">
                             <div id="divFormularioAdjuntos" align="center" width="100%"></div>
+                            
                             <div id="gridArchivos" align="center" width="100%"></div>
                         </div>
                         <div class="col-md-6">
                             <div id="divReporteAdjuntos" align="center" width="100%"></div>
                         </div>
+
+                        <div class="col-md-6">
+                            <!-- AQUI SE CARGARÁ LA TABLA UAFE -->
+                            <div id="divReporteAdjuntosUafe" align="center" width="100%"></div>
+                        </div>
+
                     </div>
 
                 </div>
+
                 <div style="width: 100%;">
                     <div class="modal fade" id="miModal" tabindex="-1" role="dialog" aria-labelledby="myModalLabel" aria-hidden="true"></div>
                 </div>
@@ -1414,18 +1501,61 @@ if (isset($_REQUEST['codpedi'])) {
                     </div>
                 </div>
 
+                <!-- MODAL PARA ENVIAR CORREO -->
+                    <div class="col-md-12">
+                        <div class="modal fade" id="miModal" tabindex="-1" role="dialog" aria-labelledby="myModalLabel" aria-hidden="true">
+                            <div class="modal-dialog modal-lg" role="document">
+                                <div class="modal-content">
+                                    <div class="modal-header">
+                                        <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                                            <span aria-hidden="true">&times;</span>
+                                        </button>
+                                        <h4 class="modal-title" id="myModalLabel">Listado de Mensajes SRI</h4>
+                                    </div>
+                                    <div class="modal-body">
+                                        <table id="example" class="table table-striped table-bordered table-hover table-condensed" style="width: 100%;" align="center">
+                                            <thead>
+                                                <tr class="primary">
+                                                    <th style="width: 10%;">Codigo</th>
+                                                    <th style="width: 45%;">Mensaje</th>
+                                                    <th style="width: 45%;">Detalle</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                            </tbody>
+                                        </table>  
+                                    </div>
+                                    <div class="modal-footer">
+                                        <button type="button" class="btn btn-default" data-dismiss="modal">Cerrar</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>                                     
+
 
             </form>
+
+      
         </div>
     </body>
 
-    
+    <script src="js/uafe_bloqueo.js"></script>
+
+
     <script>
         genera_formulario(); /*genera_detalle();genera_form_detalle();*/
-        //habilitarEstadoProveedor();
     </script>
+
+    <?php
+        if ($usaUAFE == 't') {
+            echo "<script> habilitarEstadoProveedor(true); </script>";
+        } else {
+            echo "<script> habilitarEstadoProveedor(false); </script>";
+        }
+    ?>
     <script src="js/google_maps.js"></script>
-    <!-- <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyB8pAD65yn2Qtj_DTowH8xUUkUB6U_SRN0&callback=initMap"></script> -->
+    <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyB8pAD65yn2Qtj_DTowH8xUUkUB6U_SRN0&callback=initMap"></script>
 
     <? /*     * ***************************************************************** */ ?>
     <? /* NO MODIFICAR ESTA SECCION */ ?>
