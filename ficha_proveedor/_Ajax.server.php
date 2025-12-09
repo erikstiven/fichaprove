@@ -1222,9 +1222,9 @@ function genera_formulario_cliente($sAccion = 'nuevo', $aForm = '', $cod, $pedi)
 						<td>* Estado</td>
 						<td colspan="1">
 
-                        <label>Activo</label><input type="radio" name="estado" id="AC" value="A" checked />
-						<label>Suspendido</label><input type="radio" name="estado" id="SU" value="S" />
-						<label>Pendiente</label><input type="radio" name="estado" id="PE" value="P" />
+                        <label>Activo</label><input type="radio" name="estado" id="AC" value="A" />
+                                                <label>Suspendido</label><input type="radio" name="estado" id="SU" value="S" />
+                                                <label>Pendiente</label><input type="radio" name="estado" id="PE" value="P" checked />
 
 
 					</td>
@@ -7266,6 +7266,35 @@ function sincronizarEstadoProveedorPorUafe($idempresa, $id_clpv, $bloquear)
     $oIfx->Query($sql);
 }
 
+function obtenerEstadoProveedorInformix($idempresa, $id_clpv)
+{
+    global $DSN_Ifx;
+
+    if (empty($DSN_Ifx) || !$idempresa || !$id_clpv) {
+        return '';
+    }
+
+    $oIfx = new Dbo();
+    $oIfx->DSN = $DSN_Ifx;
+    $oIfx->Conectar();
+
+    $sqlEstado = "
+        SELECT clpv_est_clpv
+        FROM saeclpv
+        WHERE clpv_cod_empr = $idempresa
+          AND clpv_cod_clpv = $id_clpv
+        LIMIT 1
+    ";
+
+    $estadoDb = consulta_string_func($sqlEstado, 'clpv_est_clpv', $oIfx, '');
+
+    if ($estadoDb === 'A') return 'AC';
+    if ($estadoDb === 'S') return 'SU';
+    if ($estadoDb === 'P') return 'PE';
+
+    return '';
+}
+
 function debeBloquearEstadoPorUafe($idempresa, $id_clpv, $oCon)
 {
     if (!$id_clpv) {
@@ -7341,6 +7370,13 @@ function validarEstadoUAFEProveedor($id_clpv)
     $bloquear = debeBloquearEstadoPorUafe($idempresa, $id_clpv, $oCon);
     sincronizarEstadoProveedorPorUafe($idempresa, $id_clpv, $bloquear);
     $oReturn->script("habilitarEstadoProveedor(" . ($bloquear ? 'true' : 'false') . ");");
+
+    $estadoVisual = obtenerEstadoProveedorInformix($idempresa, $id_clpv);
+    if ($estadoVisual === '') {
+        $estadoVisual = $bloquear ? 'PE' : 'AC';
+    }
+
+    $oReturn->script("editar('$estadoVisual');");
 
     return $oReturn;
 }
@@ -8023,6 +8059,12 @@ function guardarAdjuntosUAFE($id_clpv)
     sincronizarEstadoProveedorPorUafe($idempresa, $id_clpv, $bloquear);
 
     $oReturn->script("habilitarEstadoProveedor(" . ($bloquear ? 'true' : 'false') . ");");
+
+    $estadoVisual = obtenerEstadoProveedorInformix($idempresa, $id_clpv);
+    if ($estadoVisual === '') {
+        $estadoVisual = $bloquear ? 'PE' : 'AC';
+    }
+    $oReturn->script("editar('$estadoVisual');");
 
     if ($bloquear) {
         $oReturn->script("Swal.fire({
