@@ -257,7 +257,11 @@ if (isset($_REQUEST['codpedi'])) {
             let SU = document.getElementById("SU");
             let PE = document.getElementById("PE");
 
-            const estadoNormalizado = estado || "PE";
+            if (estado === undefined || estado === null || estado === "") {
+                return;
+            }
+
+            const estadoNormalizado = estado;
 
             AC.checked = (estadoNormalizado === "AC" || estadoNormalizado === "A");
             SU.checked = (estadoNormalizado === "SU" || estadoNormalizado === "S");
@@ -289,6 +293,7 @@ if (isset($_REQUEST['codpedi'])) {
                 for (var j = 0; j < select.options.length; j++) {
                     if (select.options[j].value == candidato) {
                         select.value = candidato;
+                        $(select).trigger('change');
                         return;
                     }
                 }
@@ -611,6 +616,10 @@ if (isset($_REQUEST['codpedi'])) {
                 habilitarEstadoProveedor(true);
             }
             xajax_seleccionaItem(xajax.getFormValues("form1"), id);
+
+            if (usaUafe) {
+                xajax_validarEstadoUAFEProveedor(id);
+            }
         }
 
         function cargarDatosProd(a, b) {

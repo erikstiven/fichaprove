@@ -2474,8 +2474,6 @@ function seleccionaItem($aForm = '', $cliente = 0)
 
             $oReturn->script('editar("' . $clpv_est_clpv . '")');
 
-        } else {
-            $oReturn->script('editar("PE")');
         }
 
         //AHORA VALIDAR UAFE (bloquea o habilita radios según documentos)
