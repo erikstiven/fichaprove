@@ -986,10 +986,6 @@ if (isset($_SESSION['U_EMPRESA'])) {
             $("#tipo_adj").on('change', cambiarTipoAdjunto);
         });
 
-        function cambiarEstadoUafe(id_uafe, id_clpv, checked) {
-            var valor = checked ? 1 : 0;
-            xajax_cambiarEstadoUafe(id_uafe, id_clpv, valor);
-        }
     </script>
 
 

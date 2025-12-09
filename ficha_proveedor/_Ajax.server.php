@@ -7876,8 +7876,7 @@ function consultarAdjuntosUafe($aForm = '')
                     <td>$fecVenc</td>
                     <td>$estadoMostrar</td>
                     <td align='center'>
-                        <input type='checkbox' class='chkCumplimientoUafe' name='cumplimiento[$id_uafe]' value='1' $checked
-                            onclick=\"cambiarEstadoUafe($id_uafe, $id_clpv, this.checked)\">
+                        <input type='checkbox' class='chkCumplimientoUafe' name='cumplimiento[$id_uafe]' value='1' $checked>
                     </td>
                     <td align='center'>$btnEliminar</td>
                 </tr>
@@ -7959,13 +7958,6 @@ function guardarAdjuntosUAFE($aForm = '')
         }
     }
 
-    // Estados temporales en sesión tienen prioridad sobre el formulario
-    if (isset($_SESSION['adjuntosUafeTmp'][$id_clpv]) && is_array($_SESSION['adjuntosUafeTmp'][$id_clpv])) {
-        foreach ($_SESSION['adjuntosUafeTmp'][$id_clpv] as $idDoc => $estadoTmp) {
-            $seleccionados[intval($idDoc)] = ($estadoTmp === 'AC') ? 'AC' : 'PE';
-        }
-    }
-
     $existentes = array();
     $listaIds   = implode(',', array_keys($catalogo));
 
@@ -7990,7 +7982,8 @@ function guardarAdjuntosUAFE($aForm = '')
         } while ($oCon->SiguienteRegistro());
     }
 
-    $huboCambios = false;
+    $huboCambios    = false;
+    $cumpleDespues  = false;
 
     try {
         $oCon->QueryT("BEGIN;");
@@ -8036,6 +8029,19 @@ function guardarAdjuntosUAFE($aForm = '')
             }
         }
 
+        $cumpleDespues = $usaValidacion ? proveedorCumpleUafe($idempresa, $idsucursal, $id_clpv, $oCon) : true;
+
+        if ($cumpleDespues) {
+            $sqlActivar = "
+                UPDATE saeclpv
+                SET clpv_est_clpv = 'A'
+                WHERE clpv_cod_clpv = $id_clpv
+                  AND clpv_cod_empr = $idempresa
+                  AND clpv_cod_sucu = $idsucursal;
+            ";
+            $oCon->QueryT($sqlActivar);
+        }
+
         $oCon->QueryT("COMMIT;");
     } catch (Exception $e) {
         $oCon->QueryT("ROLLBACK;");
@@ -8043,7 +8049,9 @@ function guardarAdjuntosUAFE($aForm = '')
         return $oReturn;
     }
 
-    unset($_SESSION['adjuntosUafeTmp'][$id_clpv]);
+    if (isset($_SESSION['adjuntosUafeTmp'][$id_clpv])) {
+        unset($_SESSION['adjuntosUafeTmp'][$id_clpv]);
+    }
 
     $oReturn->script("consultarAdjuntosUafe();");
 
@@ -8053,18 +8061,18 @@ function guardarAdjuntosUAFE($aForm = '')
     $iconoModal = $huboCambios ? 'success' : 'info';
 
     if ($usaValidacion) {
-        if (proveedorCumpleUafe($idempresa, $idsucursal, $id_clpv, $oCon)) {
+        if ($cumpleDespues) {
             $oReturn->script("habilitarEstadoProveedor(false);");
             $oReturn->script("habilitarCumplimientoUafe(true);");
             $textoModal = $huboCambios
-                ? 'Documentos UAFE actualizados correctamente. El proveedor ya cumple con los requisitos.'
-                : 'El proveedor ya cumple con los requisitos UAFE.';
+                ? 'Los documentos UAFE se guardaron correctamente. El proveedor ahora está Activo.'
+                : 'El proveedor ya cumple con los requisitos UAFE y se mantiene Activo.';
             $iconoModal = 'success';
         } else {
             $oReturn->script("habilitarEstadoProveedor(true);");
             $oReturn->script("habilitarCumplimientoUafe(false);");
             $textoModal = $huboCambios
-                ? 'Faltan documentos UAFE por completar. El proveedor no cumple con los requisitos.'
+                ? 'Los documentos se guardaron, pero todavía faltan archivos por cumplir.'
                 : 'No se registraron cambios en documentos UAFE. El proveedor no cumple con los requisitos.';
             $iconoModal = $huboCambios ? 'warning' : 'info';
         }
