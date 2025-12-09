@@ -7201,6 +7201,9 @@ function validarEstadoUAFEProveedor($id_clpv)
         return $oReturn;
     }
 
+    // Punto de control: con UAFE activo, bloquear por defecto hasta validar
+    $oReturn->script("habilitarEstadoProveedor(true);");
+
     //----------------------------------------------------------
     // 2. CONSULTAR DOCUMENTOS REQUERIDOS POR UAFE (CATÁLOGO)
     //----------------------------------------------------------
@@ -8023,7 +8026,7 @@ function guardarAdjuntosUAFE($id_clpv)
     if (!$todosAC) {
 
         // BLOQUEAR RADIOS
-        $oReturn->script("habilitarEstadoProveedor(false);");
+        $oReturn->script("habilitarEstadoProveedor(true);");
 
         $oReturn->script("
             Swal.fire({
@@ -8048,7 +8051,7 @@ function guardarAdjuntosUAFE($id_clpv)
     $oCon->Query($sqlUpd);
 
     // HABILITAR RADIOS
-    $oReturn->script("habilitarEstadoProveedor(true);");
+    $oReturn->script("habilitarEstadoProveedor(false);");
 
     //CONFIRMACIÓN
     $oReturn->script("
