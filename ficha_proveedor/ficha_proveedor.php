@@ -898,12 +898,7 @@ if (isset($_REQUEST['codpedi'])) {
         }
 
         function consultarAdjuntos() {
-            var cliente = $("#codigoCliente").val();
-            if (cliente != '') {
-                xajax_consultarAdjuntos(xajax.getFormValues("form1"));
-            } else {
-                alert("Seleccione Cliente para continuar...!");
-            }
+            xajax_consultarAdjuntos(xajax.getFormValues("form1"));
         }
 
         // Consultar documentos UAFE del proveedor seleccionado
