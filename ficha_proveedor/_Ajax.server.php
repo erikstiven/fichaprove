@@ -1132,6 +1132,7 @@ function genera_formulario_cliente($sAccion = 'nuevo', $aForm = '', $cod, $pedi)
             console.log('%cline 1: VALOR RAW DE usaUAFE = ' + JSON.stringify('$valorUafeRaw'), 'color:yellow;font-weight:bold');
             console.log('%cline 1b: usaUAFE normalizado = ' + JSON.stringify('$usaUAFE'), 'color:yellow;font-weight:bold');
         ");
+        $oReturn->script("window.usaUafeEmpresa = " . ($usaUAFE ? 'true' : 'false') . ";");
 
         //------------------------------------------------------------------------------
         //  FIN VALIDACIÓN UAFE PARA HABILITAR/DESHABILITAR ESTADO
@@ -2361,16 +2362,10 @@ function seleccionaItem($aForm = '', $cliente = 0)
         // VALIDACIÓN PREVIA DE ESTADO (UAFE)
         // ------------------------------------------------------------
         $usaUafe = usaValidacionUAFE($idempresa, $oPg);
+        $bloquearEstado = $usaUafe && debeBloquearEstadoPorUafe($idempresa, $cliente, $oPg);
 
-        if ($usaUafe) {
-            // Mientras se valida el proveedor seleccionado, bloquear por defecto
-            $oReturn->script("habilitarEstadoProveedor(true);");
-
-            $bloquearEstado = debeBloquearEstadoPorUafe($idempresa, $cliente, $oPg);
-            $oReturn->script("habilitarEstadoProveedor(" . ($bloquearEstado ? 'true' : 'false') . ");");
-        } else {
-            $oReturn->script("habilitarEstadoProveedor(false);");
-        }
+        // Mientras llegan los datos, aplicar inmediatamente el bloqueo/ habilitación correspondiente
+        $oReturn->script("habilitarEstadoProveedor(" . ($bloquearEstado ? 'true' : 'false') . ");");
 
         // ------------------------------------------------------------
         // CARGA DE DATOS PRINCIPALES

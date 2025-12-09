@@ -572,7 +572,11 @@ if (isset($_REQUEST['codpedi'])) {
         }
 
         function seleccionaItem(id) {
-            habilitarEstadoProveedor(true);
+            const usaUafe = typeof window.usaUafeEmpresa !== 'undefined' ? window.usaUafeEmpresa : false;
+
+            if (usaUafe) {
+                habilitarEstadoProveedor(true);
+            }
             xajax_seleccionaItem(xajax.getFormValues("form1"), id);
         }
 
