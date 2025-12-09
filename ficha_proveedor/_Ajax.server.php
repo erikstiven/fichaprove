@@ -2395,6 +2395,11 @@ function seleccionaItem($aForm = '', $cliente = 0)
     $oCon->DSN = $DSN_Ifx;
     $oCon->Conectar();
 
+    // Conexión a BD principal (Postgres) para validaciones UAFE
+    $oPg = new Dbo;
+    $oPg->DSN = $DSN;
+    $oPg->Conectar();
+
     $oReturn = new xajaxResponse();
 
     unset($_SESSION['aDataGirdCuentaAplicada']);
@@ -2402,6 +2407,21 @@ function seleccionaItem($aForm = '', $cliente = 0)
     $idsucursal = $_SESSION['U_SUCURSAL'];
 
     try {
+
+        // ------------------------------------------------------------
+        // VALIDACIÓN PREVIA DE ESTADO (UAFE)
+        // ------------------------------------------------------------
+        $usaUafe = usaValidacionUAFE($idempresa, $oPg);
+
+        if ($usaUafe) {
+            // Mientras se valida el proveedor seleccionado, bloquear por defecto
+            $oReturn->script("habilitarEstadoProveedor(true);");
+
+            $bloquearEstado = debeBloquearEstadoPorUafe($idempresa, $cliente, $oPg);
+            $oReturn->script("habilitarEstadoProveedor(" . ($bloquearEstado ? 'true' : 'false') . ");");
+        } else {
+            $oReturn->script("habilitarEstadoProveedor(false);");
+        }
 
         // ------------------------------------------------------------
         // CARGA DE DATOS PRINCIPALES
@@ -7164,11 +7184,66 @@ function FooterMap($id_contrato, $opcion)
 }*/
 
 //-----------------------------------------------------------------------------------------
-//INICIO FUNCIONES DE LA UAFE Y DOCUMENTOS 
+//INICIO FUNCIONES DE LA UAFE Y DOCUMENTOS
 //-----------------------------------------------------------------------------------------
 
-function validarEstadoUAFEProveedor($id_clpv)
+function usaValidacionUAFE($idempresa, $oCon)
 {
+    $sqlUafe = "
+        SELECT emmpr_uafe_cprov
+        FROM saeempr
+        WHERE empr_cod_empr = $idempresa
+    ";
+
+    return consulta_string($sqlUafe, 'emmpr_uafe_cprov', $oCon, 'f') === 't';
+}
+
+function debeBloquearEstadoPorUafe($idempresa, $id_clpv, $oCon)
+{
+    if (!$id_clpv) {
+        return false;
+    }
+
+    if (!usaValidacionUAFE($idempresa, $oCon)) {
+        return false;
+    }
+
+    $sql = "
+        SELECT estado, fecha_vencimiento
+        FROM comercial.adjuntos_clpv
+        WHERE id_clpv = $id_clpv
+          AND id_empresa = $idempresa
+          AND id_archivo_uafe IS NOT NULL
+          AND estado <> 'AN'
+    ";
+
+    $todosAprobados = true;
+    $hayVencidos = false;
+    $hoy = date('Y-m-d');
+
+    if ($oCon->Query($sql) && $oCon->NumFilas() > 0) {
+        do {
+            $estado = trim($oCon->f('estado'));
+            $venc = $oCon->f('fecha_vencimiento');
+
+            if ($estado !== 'AC') {
+                $todosAprobados = false;
+            }
+
+            if (!empty($venc) && $venc < $hoy) {
+                $hayVencidos = true;
+            }
+        } while ($oCon->SiguienteRegistro());
+    } else {
+        // Sin documentos UAFE → mantener bloqueado hasta que cumpla
+        $todosAprobados = false;
+    }
+
+    return $hayVencidos || !$todosAprobados;
+}
+
+function validarEstadoUAFEProveedor($id_clpv)
+{ 
     global $DSN;
 
     if (session_status() !== PHP_SESSION_ACTIVE) {
@@ -7184,85 +7259,8 @@ function validarEstadoUAFEProveedor($id_clpv)
     $oCon->DSN = $DSN;
     $oCon->Conectar();
 
-    //----------------------------------------------------------
-    // 1. VERIFICAR SI LA EMPRESA USA VALIDACIÓN UAFE
-    //----------------------------------------------------------
-    $sqlUafe = "
-        SELECT emmpr_uafe_cprov
-        FROM saeempr
-        WHERE empr_cod_empr = $idempresa
-    ";
-
-    $usaUAFE = consulta_string($sqlUafe, 'emmpr_uafe_cprov', $oCon, 'f');
-
-    if ($usaUAFE != 't') {
-        // UAFE deshabilitado - radios siempre habilitados
-        $oReturn->script("habilitarEstadoProveedor(false);");
-        return $oReturn;
-    }
-
-    //----------------------------------------------------------
-    // 2. OBTENER DOCUMENTOS UAFE DEL PROVEEDOR
-    //----------------------------------------------------------
-    $sql = "
-        SELECT estado, fecha_vencimiento
-        FROM comercial.adjuntos_clpv
-        WHERE id_clpv = $id_clpv
-          AND id_empresa = $idempresa
-          AND id_archivo_uafe IS NOT NULL
-          AND estado <> 'AN'
-    ";
-
-    $todosAprobados = true;
-    $tieneDocumentos = false;
-    $hayVencidos = false;
-
-    $hoy = date('Y-m-d');
-
-    if ($oCon->Query($sql) && $oCon->NumFilas() > 0) {
-
-        $tieneDocumentos = true;
-
-        do {
-
-            $estado = trim($oCon->f('estado'));
-            $venc = $oCon->f('fecha_vencimiento');
-
-            // Documento NO aprobado
-            if ($estado !== 'AC') {
-                $todosAprobados = false;
-            }
-
-            // Documento vencido
-            if (!empty($venc) && $venc < $hoy) {
-                $hayVencidos = true;
-            }
-
-        } while ($oCon->SiguienteRegistro());
-
-    } else {
-        // No tiene UAFE → bloquear
-        $todosAprobados = false;
-    }
-
-    //----------------------------------------------------------
-    // 3. REGLAS DE NEGOCIO UAFE
-    //----------------------------------------------------------
-
-    // Regla 1: Si algún documento está vencido → bloquear
-    if ($hayVencidos) {
-        $oReturn->script("habilitarEstadoProveedor(true);");
-        return $oReturn;
-    }
-
-    // Regla 2: Si NO todos están AC → bloquear
-    if (!$todosAprobados) {
-        $oReturn->script("habilitarEstadoProveedor(true);");
-        return $oReturn;
-    }
-
-    // Regla 3: Si todos aprobados (AC y no vencidos) → habilitar
-    $oReturn->script("habilitarEstadoProveedor(false);");
+    $bloquear = debeBloquearEstadoPorUafe($idempresa, $id_clpv, $oCon);
+    $oReturn->script("habilitarEstadoProveedor(" . ($bloquear ? 'true' : 'false') . ");");
 
     return $oReturn;
 }
