@@ -152,22 +152,28 @@ function genera_formulario_cliente($sAccion = 'nuevo', $aForm = '', $cod, $pedi)
 
                 $ifu->AgregarCampoLista('identificacion', 'Tipo|left', true, 170, 150, true);
                 $sql = "SELECT t.id_iden_clpv, t.identificacion, t.tipo, c.identificacion AS iden, c.digitos
-								FROM comercial.tipo_iden_clpv t , comercial.tipo_iden_clpv_pais c  WHERE
-								t.id_iden_clpv = c.id_iden_clpv AND
-								c.pais_cod_pais = '$empr_cod_pais' ";
+                                                                FROM comercial.tipo_iden_clpv t , comercial.tipo_iden_clpv_pais c  WHERE
+                                                                t.id_iden_clpv = c.id_iden_clpv AND
+                                                                c.pais_cod_pais = '$empr_cod_pais' ";
 
                 unset($array_iden);
                 unset($array_iden_val);
-                if ($oCon->Query($sql)) {
-                    if ($oCon->NumFilas() > 0) {
+                if ($oCon->Query($sql) && $oCon->NumFilas() > 0) {
+                    do {
+                        $array_iden[$oCon->f('tipo')] = $oCon->f('iden');
+                        $array_iden_val[$oCon->f('tipo')] = $oCon->f('digitos');
+
+                        $ifu->AgregarOpcionCampoLista('identificacion', $oCon->f('iden'), $oCon->f('tipo'));
+                    } while ($oCon->SiguienteRegistro());
+                } else {
+                    // Cargar sin filtro de país si no existen coincidencias
+                    $sqlIdentFallback = "SELECT identificacion AS iden, tipo, 0 AS digitos FROM comercial.tipo_iden_clpv";
+                    if ($oCon->Query($sqlIdentFallback) && $oCon->NumFilas() > 0) {
                         do {
                             $array_iden[$oCon->f('tipo')] = $oCon->f('iden');
                             $array_iden_val[$oCon->f('tipo')] = $oCon->f('digitos');
-
                             $ifu->AgregarOpcionCampoLista('identificacion', $oCon->f('iden'), $oCon->f('tipo'));
                         } while ($oCon->SiguienteRegistro());
-                    } else {
-                        $oReturn->alert('Por favor Configure Pais - Etiquetas.....!!!!');
                     }
                 }
                 $oCon->Free();
@@ -1659,6 +1665,40 @@ function obtenerAdjuntosProveedorHTML($idempresa, $oCon)
     $idsucursal = $_SESSION['U_SUCURSAL'];
 
     try {
+        // Valores por defecto para evitar referencias indefinidas
+        $clpv_cod_uniq = '';
+        $clpv_cod_cuen = '';
+        $clpv_cod_clpv = 0;
+        $clv_con_clpv = '';
+        $clpv_est_clpv = '';
+        $clpv_nom_clpv = '';
+        $clpv_ruc_clpv = '';
+        $clpv_nom_come = '';
+        $grpv_cod_grpv = 0;
+        $clpv_cod_zona = 0;
+        $clpv_cod_sucu = 0;
+        $clpv_lim_cred = 0;
+        $clpv_pro_pago = 0;
+        $clpv_dsc_clpv = 0;
+        $clpv_dsc_prpg = 0;
+        $clpv_cod_cact = 0;
+        $clpv_cod_tprov = 0;
+        $clpv_cod_tpago = 0;
+        $clpv_cod_fpagop = 0;
+        $clpv_cod_paisp = 0;
+        $clpv_cod_mone = 0;
+        $clpv_ret_sn = '';
+        $clpv_par_rela = '';
+        $clpv_tec_sn = '';
+        $clpv_num_ctab = '';
+        $clpv_cod_banc = 0;
+        $clpv_tip_ctab = '';
+        $clpv_rep_clpv = '';
+        $clpv_nov_clpv = '';
+        $clpv_ubi_lati = '';
+        $clpv_ubi_long = '';
+        $clpv_ruc_tran = '';
+        $clpv_cod_char = '';
 
         //Código del proveedor desde el formulario
         $clpv = $aForm['codigoCliente'];
@@ -2391,6 +2431,7 @@ function seleccionaItem($aForm = '', $cliente = 0)
     $oIfx->DSN = $DSN_Ifx;
     $oIfx->Conectar();
 
+    //Conexion 2
     $oCon = new Dbo;
     $oCon->DSN = $DSN_Ifx;
     $oCon->Conectar();
@@ -2402,143 +2443,238 @@ function seleccionaItem($aForm = '', $cliente = 0)
     $idsucursal = $_SESSION['U_SUCURSAL'];
 
     try {
-
-        // ------------------------------------------------------------
-        // CARGA DE DATOS PRINCIPALES
-        // ------------------------------------------------------------
-        $sql = "
-            select clpv_cod_clpv, clv_con_clpv, clpv_nom_clpv, clpv_cod_char,
-                   clpv_ruc_clpv, clpv_nom_come, grpv_cod_grpv, clpv_cod_zona,
-                   clpv_cod_fpag, clpv_cod_sucu, clpv_pre_ven, clpv_cod_vend,
-                   clpv_lim_cred, clpv_pro_pago, clpv_est_clpv, clpv_dsc_clpv,
-                   clpv_dsc_prpg, clpv_cod_titu, clpv_cod_tclp, clpv_cod_trta,
-                   clpv_cod_fpagop, clpv_cod_tprov, clpv_cod_tpago, clpv_cod_paisp,
-                   clpv_etu_clpv, clpv_cod_banc, clpv_num_ctab, clpv_rep_clpv,
-                   clpv_cod_cact, clpv_nov_clpv, clpv_ret_sn, clpv_par_rela, clpv_tec_sn, 
-                   clpv_cod_mone, clpv_ubi_lati, clpv_ubi_long, clpv_cod_uniq, 
-                   clpv_cod_cuen, clpv_ruc_tran, clpv_tip_ctab,
-                   clpv_facebook_clpv, clpv_insta_clpv,
-                   ident_propi_clpv, fechnaci_propi_clpv, pagina_web_clpv,
-                   aniver_empr_clpv, atencion_ofi_clpv, horarios_aten_clpv, 
-                   empresa_trans_clpv, tip_entrega_clpv, resp_flete_clpv, 
-                   tip_tienda_clpv, direc_llegada, clpv_notas_clpv, cond_vent_clpv, 
-                   tip_fac_clpv, ruta_visit_clpv
-            from saeclpv
-            where clpv_cod_empr = $idempresa
-              and clpv_clopv_clpv = 'PV'
-              and clpv_cod_clpv = $cliente
-        ";
+        $sql = "select clpv_cod_clpv, clv_con_clpv, clpv_nom_clpv, clpv_cod_char,
+                                clpv_ruc_clpv, clpv_nom_come, grpv_cod_grpv, clpv_cod_zona,
+                                clpv_cod_fpag, clpv_cod_sucu, clpv_pre_ven, clpv_cod_vend,
+                                clpv_lim_cred, clpv_pro_pago, clpv_est_clpv, clpv_dsc_clpv,
+                                clpv_dsc_prpg, clpv_cod_titu, clpv_cod_tclp, clpv_cod_trta,
+                                clpv_cod_fpagop, clpv_cod_tprov, clpv_cod_tpago, clpv_cod_paisp,
+                                clpv_etu_clpv, clpv_cod_banc, clpv_num_ctab, clpv_rep_clpv,
+                                clpv_cod_cact, clpv_nov_clpv, clpv_ret_sn  , clpv_par_rela, clpv_tec_sn, clpv_cod_mone,
+                clpv_ubi_lati, clpv_ubi_long,clpv_cod_uniq, clpv_cod_cuen, clpv_ruc_tran,
+                clpv_tip_ctab, clpv_facebook_clpv, clpv_insta_clpv,
+                ident_propi_clpv, fechnaci_propi_clpv, pagina_web_clpv,
+                aniver_empr_clpv, atencion_ofi_clpv,  horarios_aten_clpv,
+                empresa_trans_clpv, tip_entrega_clpv,   resp_flete_clpv,
+                tip_tienda_clpv, direc_llegada, clpv_notas_clpv, cond_vent_clpv, tip_fac_clpv, ruta_visit_clpv
+                                from saeclpv where
+                                clpv_cod_empr = $idempresa and
+                                clpv_clopv_clpv = 'PV' and
+                                clpv_cod_clpv = $cliente";
 
         if ($oIfx->Query($sql) && $oIfx->NumFilas() > 0) {
-
-            // Campos base
-            $clpv_cod_clpv = $oIfx->f('clpv_cod_clpv');
             $clpv_cod_uniq = $oIfx->f('clpv_cod_uniq');
-            $clpv_nom_clpv = $oIfx->f('clpv_nom_clpv');
-            $clpv_ruc_clpv = $oIfx->f('clpv_ruc_clpv');
-            $clpv_nom_come = $oIfx->f('clpv_nom_come');
-            $clv_con_clpv   = $oIfx->f('clv_con_clpv');
-            $clpv_est_clpv  = $oIfx->f('clpv_est_clpv');
+            $clpv_cod_clpv = $oIfx->f('clpv_cod_clpv');
 
-            // Más campos...
-            $clpv_cod_zona = $oIfx->f('clpv_cod_zona');
-            $clpv_cod_sucu = $oIfx->f('clpv_cod_sucu');
-            $clpv_lim_cred = $oIfx->f('clpv_lim_cred');
-            $clpv_pro_pago = $oIfx->f('clpv_pro_pago');
-            $grpv_cod_grpv = $oIfx->f('grpv_cod_grpv');
-            $clpv_dsc_clpv = $oIfx->f('clpv_dsc_clpv');
-            $clpv_dsc_prpg = $oIfx->f('clpv_dsc_prpg');
-            $clpv_cod_cact = $oIfx->f('clpv_cod_cact');
-            $clpv_cod_tprov = $oIfx->f('clpv_cod_tprov');
-            $clpv_cod_tpago = $oIfx->f('clpv_cod_tpago');
-            $clpv_cod_fpagop = $oIfx->f('clpv_cod_fpagop');
-            $clpv_cod_paisp  = $oIfx->f('clpv_cod_paisp');
-            $clpv_cod_mone = $oIfx->f('clpv_cod_mone');
-            $clpv_ret_sn  = $oIfx->f('clpv_ret_sn');
-            $clpv_par_rela = $oIfx->f('clpv_par_rela');
-            $clpv_tec_sn = $oIfx->f('clpv_tec_sn');
-            $clpv_num_ctab = $oIfx->f('clpv_num_ctab');
-            $clpv_cod_banc = $oIfx->f('clpv_cod_banc');
-            $clpv_tip_ctab = $oIfx->f('clpv_tip_ctab');
-
-            // Contacto email
-            $sqlCorreo = "
-                select emai_ema_emai
-                from saeemai
-                where emai_cod_empr = $idempresa
-                  and emai_cod_clpv = $clpv_cod_clpv
-                  and emai_cod_tiem = 1
-                limit 1
-            ";
+            //Mostrar correo asignado
+            // ==========================================
+            // CARGAR EMAIL CONTACTO (tipo = 1)
+            // ==========================================
+            $sqlCorreoContacto = "
+                    select emai_ema_emai
+                    from saeemai
+                    where emai_cod_empr = $idempresa
+                    and emai_cod_clpv = $clpv_cod_clpv
+                    and emai_cod_tiem = 1
+                    limit 1
+                ";
 
             $correo_contacto = '';
-            if ($oCon->Query($sqlCorreo) && $oCon->NumFilas() > 0) {
-                $correo_contacto = $oCon->f('emai_ema_emai');
+            if ($oCon->Query($sqlCorreoContacto)) {
+                if ($oCon->NumFilas() > 0) {
+                    $correo_contacto = $oCon->f('emai_ema_emai');
+                }
             }
-
             $oReturn->assign('correo_contacto_', 'value', $correo_contacto);
 
-            // Asignación general a controles
-            $oReturn->assign('codigoUnico', 'value', $clpv_cod_uniq);
-            $oReturn->assign('codigoCliente', 'value', $clpv_cod_clpv);
-            $oReturn->assign('ruc_cli', 'value', $clpv_ruc_clpv);
-            $oReturn->assign('nombre', 'value', $clpv_nom_clpv);
-            $oReturn->assign('nombre_comercial', 'value', $clpv_nom_come);
-            $oReturn->assign('grupo', 'value', $grpv_cod_grpv);
-            $oReturn->assign('clpv_cod_sucu', 'value', $clpv_cod_sucu);
-            $oReturn->assign('zona', 'value', $clpv_cod_zona);
-            $oReturn->assign('limite', 'value', $clpv_lim_cred);
-            $oReturn->assign('dias_pago', 'value', $clpv_pro_pago);
-            $oReturn->assign('dsctGeneral', 'value', $clpv_dsc_clpv);
-            $oReturn->assign('dsctDetalle', 'value', $clpv_dsc_prpg);
-            $oReturn->assign('tipo_cliente', 'value', $clpv_cod_cact);
-            $oReturn->assign('tipo_prove', 'value', $clpv_cod_tprov);
-            $oReturn->assign('tipo_pago', 'value', $clpv_cod_tpago);
-            $oReturn->assign('pago', 'value', $clpv_cod_fpagop);
-            $oReturn->assign('pais', 'value', $clpv_cod_paisp);
-            $oReturn->assign('banco', 'value', $clpv_cod_banc);
-            $oReturn->assign('cuenta', 'value', $clpv_num_ctab);
-            $oReturn->assign('tipoCuenta', 'value', $clpv_tip_ctab);
+            $clpv_nom_clpv = $oIfx->f('clpv_nom_clpv');
+            $clpv_ruc_clpv = $oIfx->f('clpv_ruc_clpv');
+            $clpv_cod_fpag = $oIfx->f('clpv_cod_fpag');
+            $clpv_cod_sucu = $oIfx->f('clpv_cod_sucu');
+            $clv_con_clpv = $oIfx->f('clv_con_clpv');
+            $clpv_nom_come = $oIfx->f('clpv_nom_come');
+            $grpv_cod_grpv = $oIfx->f('grpv_cod_grpv');
+            $clpv_cod_zona = $oIfx->f('clpv_cod_zona');
+            $clpv_pre_ven = round($oIfx->f('clpv_pre_ven'));
+            $clpv_cod_vend = $oIfx->f('clpv_cod_vend');
+            $clpv_lim_cred = $oIfx->f('clpv_lim_cred');
+            $clpv_pro_pago = $oIfx->f('clpv_pro_pago');
+            $clpv_dsc_clpv = $oIfx->f('clpv_dsc_clpv');
+            $clpv_dsc_prpg = $oIfx->f('clpv_dsc_prpg');
+            $clpv_est_clpv = $oIfx->f('clpv_est_clpv');
+            $clpv_cod_titu = $oIfx->f('clpv_cod_titu');
+            $clpv_cod_tclp = $oIfx->f('clpv_cod_tclp');
+            $clpv_cod_trta = $oIfx->f('clpv_cod_trta');
+            $clpv_cod_fpagop = $oIfx->f('clpv_cod_fpagop');
+            $clpv_cod_tprov = $oIfx->f('clpv_cod_tprov');
+            $clpv_cod_tpago = $oIfx->f('clpv_cod_tpago');
+            $clpv_cod_paisp = $oIfx->f('clpv_cod_paisp');
+            $clpv_etu_clpv = $oIfx->f('clpv_etu_clpv');
+            $clpv_cod_banc = $oIfx->f('clpv_cod_banc');
+            $clpv_num_ctab = $oIfx->f('clpv_num_ctab');
+            $clpv_tip_ctab = $oIfx->f('clpv_tip_ctab');
+            $clpv_cod_cact = $oIfx->f('clpv_cod_cact');
+            $clpv_rep_clpv = $oIfx->f('clpv_rep_clpv');
+            $clpv_nov_clpv = $oIfx->f('clpv_nov_clpv');
+            $clpv_ret_sn   = $oIfx->f('clpv_ret_sn');
+            $clpv_par_rela   = $oIfx->f('clpv_par_rela');
+            $clpv_tec_sn   = $oIfx->f('clpv_tec_sn');
+            $clpv_cod_mone = $oIfx->f('clpv_cod_mone');
+            $clpv_ubi_lati = $oIfx->f('clpv_ubi_lati');
+            $clpv_ubi_long = $oIfx->f('clpv_ubi_long');
+            $clpv_cod_cuen = $oIfx->f('clpv_cod_cuen');
 
-            // Checkboxes
-            $oReturn->assign('clpv_ret_sn', 'checked', ($clpv_ret_sn == 'S'));
-            $oReturn->assign('clpv_par_rela', 'checked', ($clpv_par_rela == 'S'));
-            $oReturn->assign('clpv_tec_sn', 'checked', ($clpv_tec_sn == 'S'));
+            $clpv_ruc_tran = $oIfx->f('clpv_ruc_tran');
+            $clpv_cod_char = $oIfx->f('clpv_cod_char');
+            $oReturn->assign('cod_char_clpv', 'value', $clpv_cod_char);
 
+            $ident_propi_clpv = $oIfx->f('ident_propi_clpv');
+            $fechnaci_propi_clpv = $oIfx->f('fechnaci_propi_clpv');
+            $pagina_web_clpv = $oIfx->f('pagina_web_clpv');
+            $aniver_empr_clpv  = $oIfx->f('aniver_empr_clpv');
+            $atencion_ofi_clpv  = $oIfx->f('atencion_ofi_clpv');
+            $horarios_aten_clpv  = $oIfx->f('horarios_aten_clpv');
+            $empresa_trans_clpv  = $oIfx->f('empresa_trans_clpv');
+            $tip_entrega_clpv  = $oIfx->f('tip_entrega_clpv');
+            $resp_flete_clpv  = $oIfx->f('resp_flete_clpv');
+            $tip_tienda_clpv  = $oIfx->f('tip_tienda_clpv');
+            $direc_llegada = $oIfx->f('direc_llegada');
+            $clpv_notas_clpv = $oIfx->f('clpv_notas_clpv');
+            $clpv_facebook_clpv = $oIfx->f('clpv_facebook_clpv');
+            $clpv_insta_clpv = $oIfx->f('clpv_insta_clpv');
+            $cond_vent_clpv = $oIfx->f('cond_vent_clpv');
+            $tip_fac_clpv = $oIfx->f('tip_fac_clpv');
+            $ruta_visita_cli = $oIfx->f('ruta_visit_clpv');
+
+            $oReturn->assign('identif_propie', 'value', $ident_propi_clpv);
+            $oReturn->assign('fech_nac_prop', 'value', $fechnaci_propi_clpv);
+            $oReturn->assign('pagina_web_cli', 'value', $pagina_web_clpv);
+            $oReturn->assign('aniversario_empr', 'value', $aniver_empr_clpv);
+            $oReturn->assign('atencion_tn_clie', 'value', $atencion_ofi_clpv);
+            $oReturn->assign('horarios_cli', 'value', $horarios_aten_clpv);
+            $oReturn->assign('empr_trans', 'value', $empresa_trans_clpv);
+            $oReturn->assign('tipo_entreg_clie', 'value', $tip_entrega_clpv);
+            $oReturn->assign('respon_flete', 'value', $resp_flete_clpv);
+            $oReturn->assign('tip_tiend', 'value', $tip_tienda_clpv);
+            $oReturn->assign('direcc_llega_clie', 'value', $direc_llegada);
+            $oReturn->assign('notas_cli', 'value', $clpv_notas_clpv);
+            $oReturn->assign('facebook_cli', 'value', $clpv_facebook_clpv);
+            $oReturn->assign('insta_cli', 'value', $clpv_insta_clpv);
+            $oReturn->assign('condicion_vnt', 'value', $cond_vent_clpv);
+            $oReturn->assign('tip_fact_cli', 'value', $tip_fac_clpv);
+            $oReturn->assign('ruta_visita_cli', 'value', $ruta_visita_cli);
+
+            if ($clv_con_clpv == 1) {
+                $clv_con_clpv = '01';
+            }
+
+            if ($clv_con_clpv == 2) {
+                $clv_con_clpv = '02';
+            }
+            if ($clv_con_clpv == 3) {
+                $clv_con_clpv = '03';
+            }
+
+            if ($clpv_ret_sn == 'S') {
+                $oReturn->assign('clpv_ret_sn', 'checked', true);
+            } else {
+                $oReturn->assign('clpv_ret_sn', 'checked', false);
+            }
+
+            if ($clpv_par_rela == 'S') {
+                $oReturn->assign('clpv_par_rela', 'checked', true);
+            } else {
+                $oReturn->assign('clpv_par_rela', 'checked', false);
+            }
+
+            if ($clpv_tec_sn == 'S') {
+                $oReturn->assign('clpv_tec_sn', 'checked', true);
+            } else {
+                $oReturn->assign('clpv_tec_sn', 'checked', false);
+            }
+
+            if (empty($clpv_etu_clpv)) {
+                $clpv_etu_clpv = 0;
+            }
+
+            if (empty($clpv_cod_zona)) {
+                $clpv_cod_zona = 0;
+            }
         }
+        $oIfx->Free();
 
-        // -----------------------------------------------------------
-        // INICIO VALIDACIONES DOCUMENTOS UAFE
-        // -----------------------------------------------------------
-        //Marcar estado del proveedor (A, S, P)
+        $oReturn->assign('codigoUnico', 'value', $clpv_cod_uniq);
+        $oReturn->assign('cod_cuenta_in', 'value', $clpv_cod_cuen);
+        $oReturn->assign('identificacion', 'value', $clv_con_clpv);
+        $oReturn->assign('ruc_cli', 'value', $clpv_ruc_clpv);
+        $oReturn->assign('nombre', 'value', $clpv_nom_clpv);
+        $oReturn->assign('nombre_comercial', 'value', $clpv_nom_come);
+        $oReturn->assign('grupo', 'value', $grpv_cod_grpv);
+        $oReturn->assign('clpv_cod_sucu', 'value', $clpv_cod_sucu);
+        $oReturn->assign('zona', 'value', $clpv_cod_zona);
+        $oReturn->assign('limite', 'value', $clpv_lim_cred);
+        $oReturn->assign('dias_pago', 'value', $clpv_pro_pago);
+        $oReturn->assign('dsctGeneral', 'value', $clpv_dsc_clpv);
+        $oReturn->assign('dsctDetalle', 'value', $clpv_dsc_prpg);
+        $oReturn->assign('codigoCliente', 'value', $clpv_cod_clpv);
+        $oReturn->assign('tipo_cliente', 'value', $clpv_cod_cact);
+        $oReturn->assign('tipo_prove', 'value', $clpv_cod_tprov);
+        $oReturn->assign('pago', 'value', $clpv_cod_fpagop);
+        $oReturn->assign('tipo_pago', 'value', $clpv_cod_tpago);
+        $oReturn->assign('pais', 'value', $clpv_cod_paisp);
+        $oReturn->assign('cuenta', 'value', $clpv_num_ctab);
+        $oReturn->assign('banco', 'value', $clpv_cod_banc);
+        $oReturn->assign('tipoCuenta', 'value', $clpv_tip_ctab);
+        $oReturn->assign('representante', 'value', $clpv_rep_clpv);
+        $oReturn->assign('observaciones', 'value', $clpv_nov_clpv);
+        $oReturn->assign('clpv_cod_mone', 'value', $clpv_cod_mone);
+        $oReturn->assign('latitud_tmp', 'value', $clpv_ubi_lati);
+        $oReturn->assign('longitud_tmp', 'value', $clpv_ubi_long);
+        $oReturn->assign('identificacion_sf', 'value', $clpv_ruc_tran);
+
         if (!empty($clpv_est_clpv)) {
+            if ($clpv_est_clpv == 'A') {
+                $clpv_est_clpv = 'AC';
+            }
+            if ($clpv_est_clpv == 'S') {
+                $clpv_est_clpv = 'SU';
+            }
 
-            if ($clpv_est_clpv == 'A') $clpv_est_clpv = 'AC';
-            if ($clpv_est_clpv == 'S') $clpv_est_clpv = 'SU';
-            if ($clpv_est_clpv == 'P') $clpv_est_clpv = 'PE';
+            if ($clpv_est_clpv == 'P') {
+                $clpv_est_clpv = 'PE';
+            }
 
-            $oReturn->script('editar("' . $clpv_est_clpv . '")');
-
+            $oReturn->script('editar(\'' . $clpv_est_clpv . '\')');
         } else {
-            $oReturn->script('editar("PE")');
+            $clpv_est_clpv = 'PE';
+            $oReturn->script('editar(\'' . $clpv_est_clpv . '\')');
         }
 
-        //AHORA VALIDAR UAFE (bloquea o habilita radios según documentos)
-        $oReturn->script("xajax_validarEstadoUAFEProveedor($cliente);");
+        if ($clpv_etu_clpv == 1) {
+            $oReturn->assign('contriEspecial', 'checked', true);
+        } else {
+            $oReturn->assign('contriEspecial', 'checked', false);
+        }
 
-        //Consultar documentos UAFE visuales
-        $oReturn->script('consultarAdjuntosUafe();');
-
-
-        // =======================
-        // RESTO DE PROCESOS VISUALES
-        // =======================
         $oReturn->assign('lgTitulo_frame', 'innerHTML', 'EDITAR FICHA PROVEEDOR');
         $oReturn->script('reporteTelefonoCliente();');
         $oReturn->script('reporteEmailCliente();');
         $oReturn->script('reporteDireCliente();');
+
+        $oReturn->script('ajustarComboIdentificacion();');
         $oReturn->script("consulta_cash($cliente);");
+
+        $oReturn->script('xajax_listaCcli(xajax.getFormValues(\'form1\'))');
+        $oReturn->script('xajax_genera_formulario_portafolio(xajax.getFormValues(\'form1\'))');
+        $oReturn->script('xajax_reportePlantillas(xajax.getFormValues(\'form1\'))');
+
         $oReturn->script('consultarAdjuntos();');
+
+        // VALIDAR ESTADO UAFE DEL PROVEEDOR DESPUÉS DE CARGAR DATOS
+        $oReturn->script("xajax_validarEstadoUAFEProveedor($cliente);");
+
+        //MOSTRAR DOCUMENTOS UAFE DEL PROVEEDOR
+        $oReturn->script('consultarAdjuntosUafe();');
 
     } catch (Exception $e) {
         $oReturn->alert($e->getMessage());
@@ -7196,73 +7332,59 @@ function validarEstadoUAFEProveedor($id_clpv)
     $usaUAFE = consulta_string($sqlUafe, 'emmpr_uafe_cprov', $oCon, 'f');
 
     if ($usaUAFE != 't') {
-        // UAFE deshabilitado - radios siempre habilitados
+        // Empresa no usa UAFE: radios habilitados y sin validación
+        $oReturn->script("habilitarEstadoProveedor(false);");
+        return $oReturn;
+    }
+
+    //----------------------------------------------------------
+    // 2. VALIDAR DOCUMENTOS UAFE REQUERIDOS
+    //----------------------------------------------------------
+    $sqlRequeridos = "
+        SELECT id
+        FROM comercial.archivos_uafe
+        WHERE empr_cod_empr = $idempresa
+          AND estado = 'AC'
+    ";
+
+    $requeridos = array();
+    if ($oCon->Query($sqlRequeridos) && $oCon->NumFilas() > 0) {
+        do {
+            $requeridos[] = intval($oCon->f('id'));
+        } while ($oCon->SiguienteRegistro());
+    }
+
+    // Si no hay documentos configurados, habilitar radios
+    if (count($requeridos) === 0) {
+        $oReturn->script("habilitarEstadoProveedor(false);");
+        return $oReturn;
+    }
+
+    $sqlFaltantes = "
+        SELECT COUNT(*) AS faltantes
+        FROM comercial.archivos_uafe u
+        WHERE u.empr_cod_empr = $idempresa
+          AND u.estado = 'AC'
+          AND NOT EXISTS (
+              SELECT 1
+              FROM comercial.adjuntos_clpv a
+              WHERE a.id_archivo_uafe = u.id
+                AND a.id_clpv = $id_clpv
+                AND a.id_empresa = $idempresa
+                AND a.estado = 'AC'
+          )
+    ";
+
+    $faltan = consulta_string($sqlFaltantes, 'faltantes', $oCon, 0);
+
+    if ($faltan > 0) {
+        // Bloquear edición de estado si faltan documentos aprobados
         $oReturn->script("habilitarEstadoProveedor(true);");
         return $oReturn;
     }
 
-    //----------------------------------------------------------
-    // 2. OBTENER DOCUMENTOS UAFE DEL PROVEEDOR
-    //----------------------------------------------------------
-    $sql = "
-        SELECT estado, fecha_vencimiento
-        FROM comercial.adjuntos_clpv
-        WHERE id_clpv = $id_clpv
-          AND id_empresa = $idempresa
-          AND id_archivo_uafe IS NOT NULL
-          AND estado <> 'AN'
-    ";
-
-    $todosAprobados = true;
-    $tieneDocumentos = false;
-    $hayVencidos = false;
-
-    $hoy = date('Y-m-d');
-
-    if ($oCon->Query($sql) && $oCon->NumFilas() > 0) {
-
-        $tieneDocumentos = true;
-
-        do {
-
-            $estado = trim($oCon->f('estado'));
-            $venc = $oCon->f('fecha_vencimiento');
-
-            // Documento NO aprobado
-            if ($estado !== 'AC') {
-                $todosAprobados = false;
-            }
-
-            // Documento vencido
-            if (!empty($venc) && $venc < $hoy) {
-                $hayVencidos = true;
-            }
-
-        } while ($oCon->SiguienteRegistro());
-
-    } else {
-        // No tiene UAFE → bloquear
-        $todosAprobados = false;
-    }
-
-    //----------------------------------------------------------
-    // 3. REGLAS DE NEGOCIO UAFE
-    //----------------------------------------------------------
-
-    // Regla 1: Si algún documento está vencido → bloquear
-    if ($hayVencidos) {
-        $oReturn->script("habilitarEstadoProveedor(false);");
-        return $oReturn;
-    }
-
-    // Regla 2: Si NO todos están AC → bloquear
-    if (!$todosAprobados) {
-        $oReturn->script("habilitarEstadoProveedor(false);");
-        return $oReturn;
-    }
-
-    // Regla 3: Si todos aprobados (AC y no vencidos) → habilitar
-    $oReturn->script("habilitarEstadoProveedor(true);");
+    // Todos los documentos requeridos están en estado AC
+    $oReturn->script("habilitarEstadoProveedor(false);");
 
     return $oReturn;
 }
