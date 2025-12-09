@@ -7151,6 +7151,48 @@ function usaValidacionUAFE($idempresa, $oCon)
     return valorLogicoActivado($valor);
 }
 
+function marcarAdjuntosUafeVencidos($idempresa, $id_clpv, $oCon)
+{
+    $sql = "
+        UPDATE comercial.adjuntos_clpv
+        SET estado = 'PE'
+        WHERE id_empresa = $idempresa
+          AND id_clpv = $id_clpv
+          AND id_archivo_uafe IS NOT NULL
+          AND estado = 'AC'
+          AND fecha_entrega IS NOT NULL
+          AND fecha_entrega::date < CURRENT_DATE
+    ";
+
+    $oCon->Query($sql);
+}
+
+function sincronizarEstadoProveedorPorUafe($idempresa, $id_clpv, $bloquear)
+{
+    global $DSN_Ifx;
+
+    if (empty($DSN_Ifx)) {
+        return;
+    }
+
+    $oIfx = new Dbo();
+    $oIfx->DSN = $DSN_Ifx;
+    $oIfx->Conectar();
+
+    $nuevoEstado   = $bloquear ? 'P' : 'A';
+    $estadoObjetivo = $bloquear ? 'A' : 'P';
+
+    $sql = "
+        UPDATE saeclpv
+        SET clpv_est_clpv = '$nuevoEstado'
+        WHERE clpv_cod_empr = $idempresa
+          AND clpv_cod_clpv = $id_clpv
+          AND clpv_est_clpv = '$estadoObjetivo'
+    ";
+
+    $oIfx->Query($sql);
+}
+
 function debeBloquearEstadoPorUafe($idempresa, $id_clpv, $oCon)
 {
     if (!$id_clpv) {
@@ -7161,37 +7203,54 @@ function debeBloquearEstadoPorUafe($idempresa, $id_clpv, $oCon)
         return false;
     }
 
-    $sql = "
-        SELECT estado
+    // Primero, marcar como pendientes los documentos vencidos
+    marcarAdjuntosUafeVencidos($idempresa, $id_clpv, $oCon);
+
+    $sqlRequeridos = "
+        SELECT COUNT(*) AS total
+        FROM comercial.archivos_uafe
+        WHERE empr_cod_empr = $idempresa
+          AND estado = 'AC'
+    ";
+
+    $sqlEntregados = "
+        SELECT COUNT(*) AS total
+        FROM comercial.archivos_uafe au
+        JOIN comercial.adjuntos_clpv ac
+          ON ac.id_archivo_uafe = au.id
+         AND ac.id_clpv = $id_clpv
+         AND ac.id_empresa = $idempresa
+         AND ac.estado = 'AC'
+        WHERE au.empr_cod_empr = $idempresa
+          AND au.estado = 'AC'
+          AND (ac.fecha_entrega IS NULL OR ac.fecha_entrega::date >= CURRENT_DATE)
+    ";
+
+    $totalRequeridos = intval(consulta_string($sqlRequeridos, 'total', $oCon, 0));
+    $totalEntregados = intval(consulta_string($sqlEntregados, 'total', $oCon, 0));
+
+    $sqlPendientes = "
+        SELECT COUNT(*) AS total
         FROM comercial.adjuntos_clpv
         WHERE id_clpv = $id_clpv
           AND id_empresa = $idempresa
           AND id_archivo_uafe IS NOT NULL
+          AND estado <> 'AC'
           AND estado <> 'AN'
     ";
 
-    $hayDocumentos = false;
-    $todosAprobados = true;
+    $tienePendientes = intval(consulta_string($sqlPendientes, 'total', $oCon, 0)) > 0;
 
-    if ($oCon->Query($sql) && $oCon->NumFilas() > 0) {
-        $hayDocumentos = true;
-
-        do {
-            $estado = trim($oCon->f('estado'));
-
-            if ($estado !== 'AC') {
-                $todosAprobados = false;
-            }
-        } while ($oCon->SiguienteRegistro());
+    if ($totalRequeridos === 0) {
+        return false;
     }
 
-    // Bloquear si no hay documentos UAFE registrados o si alguno no está aprobado
-    return !$hayDocumentos || !$todosAprobados;
+    return $tienePendientes || $totalEntregados < $totalRequeridos;
 }
 
 function validarEstadoUAFEProveedor($id_clpv)
-{ 
-    global $DSN;
+{
+    global $DSN, $DSN_Ifx;
 
     if (session_status() !== PHP_SESSION_ACTIVE) {
         session_start();
@@ -7207,6 +7266,7 @@ function validarEstadoUAFEProveedor($id_clpv)
     $oCon->Conectar();
 
     $bloquear = debeBloquearEstadoPorUafe($idempresa, $id_clpv, $oCon);
+    sincronizarEstadoProveedorPorUafe($idempresa, $id_clpv, $bloquear);
     $oReturn->script("habilitarEstadoProveedor(" . ($bloquear ? 'true' : 'false') . ");");
 
     return $oReturn;
