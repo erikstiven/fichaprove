@@ -1,6 +1,8 @@
 // ---------------------------------------------------------
 // BLOQUEO UAFE – Función central del módulo proveedor
 // ---------------------------------------------------------
+// Bandera global para recordar el estado de bloqueo de checkboxes UAFE
+window.uafeBloquearChecks = false;
 function habilitarEstadoProveedor(bloquear) {
     console.log("Ejecutando habilitarEstadoProveedor. bloquear=", bloquear);
 
@@ -13,10 +15,16 @@ function habilitarEstadoProveedor(bloquear) {
 }
 
 function bloquearCheckboxesUAFE(bloquear) {
+    window.uafeBloquearChecks = !!bloquear;
+
     const checks = document.querySelectorAll('#divReporteAdjuntosUafe input[type="checkbox"].uafe-check');
     checks.forEach(chk => {
         chk.disabled = bloquear;
     });
+}
+
+function sincronizarBloqueoCheckboxesUAFE() {
+    bloquearCheckboxesUAFE(window.uafeBloquearChecks);
 }
 
 function prepararEstadoUAFEInicial(usaUAFE, esNuevo) {

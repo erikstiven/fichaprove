@@ -898,20 +898,12 @@ if (isset($_REQUEST['codpedi'])) {
         }
 
         function consultarAdjuntos() {
-            var cliente = $("#codigoCliente").val();
-            if (cliente != '') {
-                xajax_consultarAdjuntos(xajax.getFormValues("form1"));
-            } else {
-                alert("Seleccione Cliente para continuar...!");
-            }
+            xajax_consultarAdjuntos(xajax.getFormValues("form1"));
         }
 
         // Consultar documentos UAFE del proveedor seleccionado
         function consultarAdjuntosUafe() {
-            var cliente = $("#codigoCliente").val();
-            if (cliente && cliente !== '') {
-                xajax_consultarAdjuntosUafe(xajax.getFormValues("form1"));
-            }
+            xajax_consultarAdjuntosUafe(xajax.getFormValues("form1"));
         }
 
         function dowloand(ruta) {
@@ -1545,6 +1537,8 @@ if (isset($_REQUEST['codpedi'])) {
 
     <script>
         genera_formulario(); /*genera_detalle();genera_form_detalle();*/
+        consultarAdjuntos();
+        consultarAdjuntosUafe();
     </script>
 
     <?php

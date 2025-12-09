@@ -7320,6 +7320,7 @@ function validarEstadoUAFEProveedor($id_clpv)
         // Empresa no usa UAFE: radios y checkboxes habilitados, sin validación
         $oReturn->script("habilitarEstadoProveedor(false);");
         $oReturn->script("bloquearCheckboxesUAFE(false);");
+        $oReturn->script("if (typeof sincronizarBloqueoCheckboxesUAFE === 'function'){sincronizarBloqueoCheckboxesUAFE();}");
         return $oReturn;
     }
 
@@ -7344,6 +7345,7 @@ function validarEstadoUAFEProveedor($id_clpv)
     if (count($requeridos) === 0) {
         $oReturn->script("habilitarEstadoProveedor(false);");
         $oReturn->script("bloquearCheckboxesUAFE(false);");
+        $oReturn->script("if (typeof sincronizarBloqueoCheckboxesUAFE === 'function'){sincronizarBloqueoCheckboxesUAFE();}");
         return $oReturn;
     }
 
@@ -7368,12 +7370,14 @@ function validarEstadoUAFEProveedor($id_clpv)
         // Bloquear edición de estado y checkboxes si faltan documentos aprobados
         $oReturn->script("habilitarEstadoProveedor(true);");
         $oReturn->script("bloquearCheckboxesUAFE(true);");
+        $oReturn->script("if (typeof sincronizarBloqueoCheckboxesUAFE === 'function'){sincronizarBloqueoCheckboxesUAFE();}");
         return $oReturn;
     }
 
     // Todos los documentos requeridos están en estado AC
     $oReturn->script("bloquearCheckboxesUAFE(false);");
     $oReturn->script("habilitarEstadoProveedor(false);");
+    $oReturn->script("if (typeof sincronizarBloqueoCheckboxesUAFE === 'function'){sincronizarBloqueoCheckboxesUAFE();}");
 
     return $oReturn;
 }
@@ -7827,11 +7831,6 @@ function consultarAdjuntos($aForm = '')
     //variables de formulario
     $cliente  = $aForm['codigoCliente'];
 
-    if (empty($cliente)) {
-        $oReturn->assign('divReporteAdjuntos', 'innerHTML', '');
-        return $oReturn;
-    }
-
     try {
 
         $sHtml  = '';
@@ -7846,51 +7845,57 @@ function consultarAdjuntos($aForm = '')
         $sHtml .= '<td></td>';
         $sHtml .= '</tr>';
 
-        // SOLO DOCUMENTOS NORMALES (NO UAFE)
-        $sql = "
-            SELECT id, titulo, ruta
-            FROM comercial.adjuntos_clpv
-            WHERE id_clpv   = $cliente 
-              AND id_empresa = $idempresa
-              AND (id_archivo_uafe = 0 OR id_archivo_uafe IS NULL)
-            ORDER BY id DESC;
-        ";
+        if (!empty($cliente)) {
+            // SOLO DOCUMENTOS NORMALES (NO UAFE)
+            $sql = "
+                SELECT id, titulo, ruta
+                FROM comercial.adjuntos_clpv
+                WHERE id_clpv   = $cliente
+                  AND id_empresa = $idempresa
+                  AND (id_archivo_uafe = 0 OR id_archivo_uafe IS NULL)
+                ORDER BY id DESC;
+            ";
 
-        if ($oCon->Query($sql)) {
-            if ($oCon->NumFilas() > 0) {
-                $i = 1;
-                do {
-                    $id     = $oCon->f('id');
-                    $titulo = $oCon->f('titulo');
-                    $ruta   = $oCon->f('ruta');
+            if ($oCon->Query($sql)) {
+                if ($oCon->NumFilas() > 0) {
+                    $i = 1;
+                    do {
+                        $id     = $oCon->f('id');
+                        $titulo = $oCon->f('titulo');
+                        $ruta   = $oCon->f('ruta');
 
-                    // Normaliza la ruta (por si viene con ../)
-                    $ruta = str_replace('../', '', $ruta);
-                    $ruta_file = "../../Include/Clases/Formulario/Plugins/reloj/$ruta";
+                        // Normaliza la ruta (por si viene con ../)
+                        $ruta = str_replace('../', '', $ruta);
+                        $ruta_file = "../../Include/Clases/Formulario/Plugins/reloj/$ruta";
 
+                        $sHtml .= '<tr>';
+                        $sHtml .= '<td>' . $i++ . '</td>';
+                        $sHtml .= '<td>' . $titulo . '</td>';
+                        $sHtml .= ' <td>
+                                        <a href="' . $ruta_file . '" target="_blank" class="btn btn-link btn-sm">
+                                            Ver archivo
+                                        </a>
+                                    </td>';
+
+
+                        $sHtml .= ' <td style="text-align:center; vertical-align:middle;">
+                                            <div class="btn btn-danger btn-sm" onclick="javascript:eliminar_adj(' . $id . ');">
+                                                <span class="glyphicon glyphicon-remove"></span>
+                                            </div>
+                                    </td>';
+                        $sHtml .= '</tr>';
+                    } while ($oCon->SiguienteRegistro());
+                } else {
+                    // Sin registros
                     $sHtml .= '<tr>';
-                    $sHtml .= '<td>' . $i++ . '</td>';
-                    $sHtml .= '<td>' . $titulo . '</td>';
-                    $sHtml .= ' <td>
-                                    <a href="' . $ruta_file . '" target="_blank" class="btn btn-link btn-sm">
-                                        Ver archivo
-                                    </a>
-                                </td>';
-
-                
-                    $sHtml .= ' <td style="text-align:center; vertical-align:middle;">
-                                        <div class="btn btn-danger btn-sm" onclick="javascript:eliminar_adj(' . $id . ');">
-                                            <span class="glyphicon glyphicon-remove"></span>
-                                        </div>
-                                </td>';
+                    $sHtml .= '<td colspan="4" align="center"><em>No existen adjuntos registrados.</em></td>';
                     $sHtml .= '</tr>';
-                } while ($oCon->SiguienteRegistro());
-            } else {
-                // Sin registros
-                $sHtml .= '<tr>';
-                $sHtml .= '<td colspan="4" align="center"><em>No existen adjuntos registrados.</em></td>';
-                $sHtml .= '</tr>';
+                }
             }
+        } else {
+            $sHtml .= '<tr>';
+            $sHtml .= '<td colspan="4" align="center"><em>Seleccione un proveedor para visualizar sus adjuntos.</em></td>';
+            $sHtml .= '</tr>';
         }
 
         $oCon->Free();
@@ -7916,11 +7921,6 @@ function consultarAdjuntosUafe($aForm = '')
 
     $idempresa = $_SESSION['U_EMPRESA'];
     $id_clpv   = intval($aForm['codigoCliente']);
-
-    if ($id_clpv <= 0) {
-        $oReturn->assign('divReporteAdjuntosUafe', 'innerHTML', '');
-        return $oReturn;
-    }
 
     // ============================================================
     // Obtener FECHA DE VENCIMIENTO del tipo proveedor
@@ -8029,7 +8029,7 @@ function consultarAdjuntosUafe($aForm = '')
             // Solo documentos entregados pueden vencer
             if ($estado == 'AC') {
                 if ($fecVenc != "---" && $hoy > $fecVenc) {
-                    $estadoMostrar = "VE"; 
+                    $estadoMostrar = "VE";
                 }
             }
 
@@ -8072,6 +8072,8 @@ function consultarAdjuntosUafe($aForm = '')
             $i++;
 
         } while ($oCon->SiguienteRegistro());
+    } else {
+        $html .= "<tr><td colspan='8' align='center'><em>No existen documentos UAFE configurados.</em></td></tr>";
     }
 
     $html .= "</table>";
@@ -8081,6 +8083,7 @@ function consultarAdjuntosUafe($aForm = '')
     // -----------------------------------------------------------------------
 
     $oReturn->assign("divReporteAdjuntosUafe", "innerHTML", $html);
+    $oReturn->script("if (typeof sincronizarBloqueoCheckboxesUAFE === 'function'){sincronizarBloqueoCheckboxesUAFE();}");
     return $oReturn;
 }
 
