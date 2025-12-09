@@ -25,7 +25,7 @@ function empresaUsaUAFEProveedor($idempresa = null)
     $oEmpr->DSN = $DSN_Ifx;
     $oEmpr->Conectar();
 
-    $sqlUafeEmp = "SELECT 1 AS usa FROM saeempr WHERE empr_cod_empr = $idempresa AND emmpr_uafe_cprov = 't'";
+    $sqlUafeEmp = "SELECT 1 AS usa FROM saeempr WHERE empr_cod_empr = $idempresa AND emmpr_uafe_cprov = 't' LIMIT 1";
     $usaUAFE = consulta_string_func($sqlUafeEmp, 'usa', $oEmpr, '');
 
     return $usaUAFE === '1';
@@ -2631,9 +2631,6 @@ function seleccionaItem($aForm = '', $cliente = 0)
                 $clpv_est_clpv = 'PE';
             }
 
-            $oReturn->script('editar(\'' . $clpv_est_clpv . '\')');
-        } else {
-            $clpv_est_clpv = 'PE';
             $oReturn->script('editar(\'' . $clpv_est_clpv . '\')');
         }
 

@@ -257,9 +257,9 @@ if (isset($_REQUEST['codpedi'])) {
             let SU = document.getElementById("SU");
             let PE = document.getElementById("PE");
 
-            if (!AC.disabled) AC.checked = (estado === "AC" || estado === "A");
-            if (!SU.disabled) SU.checked = (estado === "SU" || estado === "S");
-            if (!PE.disabled) PE.checked = (estado === "PE" || estado === "P");
+            if (AC) AC.checked = (estado === "AC" || estado === "A");
+            if (SU) SU.checked = (estado === "SU" || estado === "S");
+            if (PE) PE.checked = (estado === "PE" || estado === "P");
         }
 
         function cerrar() {
