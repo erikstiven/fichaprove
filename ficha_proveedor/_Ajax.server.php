@@ -2084,6 +2084,9 @@ function verifica_tipo_mapa($latitud = 0, $longitud = 0, $aForm = '')
 
     $oReturn = new xajaxResponse();
 
+    // Reinicia los cambios temporales de adjuntos UAFE al cambiar de proveedor
+    unset($_SESSION['adjuntosUafeTmp']);
+
     unset($_SESSION['aDataGirdCuentaAplicada']);
     $idempresa = $_SESSION['U_EMPRESA'];
     $idsucursal = $_SESSION['U_SUCURSAL'];
@@ -7593,74 +7596,21 @@ function cambiarEstadoUafe($id_uafe, $id_clpv, $valor) {
         session_start();
     }
 
-    global $DSN;
-
-    $oCon = new Dbo();
-    $oCon->DSN = $DSN;
-    $oCon->Conectar();
-
-    $idempresa  = $_SESSION['U_EMPRESA'];
-    $idsucursal = $_SESSION['U_SUCURSAL'];
-
-    // Valor del check
+    // Valor del check solo se guarda temporalmente
     $estado = ($valor == 1) ? "AC" : "PE";
-    $fecha  = ($valor == 1) ? "'" . date("Y-m-d") . "'" : "NULL";
 
-    // Verificar si ya existe registro UAFE
-    $sqlExiste = "
-        SELECT id 
-        FROM comercial.adjuntos_clpv
-        WHERE id_clpv = $id_clpv
-          AND id_archivo_uafe = $id_uafe
-          AND id_empresa = $idempresa
-          AND id_sucursal = $idsucursal
-        LIMIT 1;
-    ";
-
-    $id_adj = 0;
-    if ($oCon->Query($sqlExiste) && $oCon->NumFilas() > 0) {
-        $id_adj = intval($oCon->f('id'));
+    if (!isset($_SESSION['adjuntosUafeTmp'])) {
+        $_SESSION['adjuntosUafeTmp'] = array();
     }
 
-    // ================================================================
-    // SI YA EXISTE → actualizar SOLO estado y fecha_entrega
-    // ================================================================
-    if ($id_adj > 0) {
-
-        $sqlUpd = "
-            UPDATE comercial.adjuntos_clpv
-            SET estado = '$estado',
-                fecha_entrega = $fecha
-            WHERE id = $id_adj;
-        ";
-
-        $oCon->Query($sqlUpd);
-
-    } else {
-
-        // ============================================================
-        // SI NO EXISTE → crear registro con estado y fecha entrega
-        // ============================================================
-
-        $sqlIns = "
-            INSERT INTO comercial.adjuntos_clpv
-            (id_empresa, id_sucursal, id_clpv, id_archivo_uafe, titulo, estado, fecha_entrega)
-            VALUES (
-                $idempresa,
-                $idsucursal,
-                $id_clpv,
-                $id_uafe,
-                (SELECT titulo FROM comercial.archivos_uafe WHERE id = $id_uafe),
-                '$estado',
-                $fecha
-            );
-        ";
-
-        $oCon->Query($sqlIns);
+    if (!isset($_SESSION['adjuntosUafeTmp'][$id_clpv])) {
+        $_SESSION['adjuntosUafeTmp'][$id_clpv] = array();
     }
+
+    $_SESSION['adjuntosUafeTmp'][$id_clpv][$id_uafe] = $estado;
 
     // ============================================================
-    // Actualizar vista
+    // Actualizar vista (solo refresco, sin persistir en BD)
     // ============================================================
 
     $oReturn = new xajaxResponse();
@@ -7908,6 +7858,12 @@ function consultarAdjuntosUafe($aForm = '')
             $rutaAdj  = trim($oCon->f('ruta_adj'));
             $fecEnt   = $oCon->f('fecha_entrega');
 
+            // Si existe un cambio temporal para este proveedor/documento, usarlo
+            if (isset($_SESSION['adjuntosUafeTmp'][$id_clpv][$id_uafe])) {
+                $estado = $_SESSION['adjuntosUafeTmp'][$id_clpv][$id_uafe];
+                $fecEnt = ($estado === 'AC') ? date("Y-m-d") : null;
+            }
+
             // Solo fecha
             if ($fecEnt != "" && $fecEnt != NULL) {
                 $fecEnt = substr($fecEnt, 0, 10);
@@ -7989,79 +7945,172 @@ function guardarAdjuntosUAFE($id_clpv)
     $oReturn = new xajaxResponse();
 
     $idempresa  = $_SESSION['U_EMPRESA'];
+    $idsucursal = $_SESSION['U_SUCURSAL'];
 
     $oCon = new Dbo();
     $oCon->DSN = $DSN;
     $oCon->Conectar();
 
-    //OBTENER TODOS LOS DOCUMENTOS UAFE DEL PROVEEDOR
-    $sql = "
-        SELECT estado
-        FROM comercial.adjuntos_clpv
-        WHERE id_clpv = $id_clpv
-          AND id_empresa = $idempresa
-          AND id_archivo_uafe IS NOT NULL
-          AND estado <> 'AN';
-    ";
+    $cambios = isset($_SESSION['adjuntosUafeTmp'][$id_clpv]) ? $_SESSION['adjuntosUafeTmp'][$id_clpv] : array();
+    $tieneCambios = count($cambios) > 0;
 
-    $todosAC = true;
+    try {
 
-    if ($oCon->Query($sql) && $oCon->NumFilas() > 0) {
+        if ($tieneCambios) {
+            $oCon->QueryT("BEGIN;");
 
-        do {
-            $estado = $oCon->f('estado');
+            foreach ($cambios as $id_uafe => $estadoSel) {
+                $estado = ($estadoSel === 'AC') ? 'AC' : 'PE';
+                $fecha  = ($estado === 'AC') ? "'" . date("Y-m-d") . "'" : "NULL";
 
-            if ($estado !== 'AC') {
-                $todosAC = false;
-                break;
+                $sqlExiste = "
+                    SELECT id
+                    FROM comercial.adjuntos_clpv
+                    WHERE id_clpv = $id_clpv
+                      AND id_archivo_uafe = $id_uafe
+                      AND id_empresa = $idempresa
+                      AND id_sucursal = $idsucursal
+                    LIMIT 1;
+                ";
+
+                $id_adj = 0;
+                if ($oCon->Query($sqlExiste) && $oCon->NumFilas() > 0) {
+                    $id_adj = intval($oCon->f('id'));
+                }
+
+                if ($id_adj > 0) {
+                    $sqlUpd = "
+                        UPDATE comercial.adjuntos_clpv
+                        SET estado = '$estado',
+                            fecha_entrega = $fecha
+                        WHERE id = $id_adj;
+                    ";
+
+                    $oCon->QueryT($sqlUpd);
+                } else {
+                    $sqlIns = "
+                        INSERT INTO comercial.adjuntos_clpv
+                        (id_empresa, id_sucursal, id_clpv, id_archivo_uafe, titulo, estado, fecha_entrega)
+                        VALUES (
+                            $idempresa,
+                            $idsucursal,
+                            $id_clpv,
+                            $id_uafe,
+                            (SELECT titulo FROM comercial.archivos_uafe WHERE id = $id_uafe),
+                            '$estado',
+                            $fecha
+                        );
+                    ";
+
+                    $oCon->QueryT($sqlIns);
+                }
             }
 
-        } while ($oCon->SiguienteRegistro());
+            $oCon->QueryT("COMMIT;");
+        }
 
-    } else {
-        $todosAC = false; // No hay documentos
-    }
+        // Limpia los cambios temporales del proveedor actual
+        unset($_SESSION['adjuntosUafeTmp'][$id_clpv]);
 
-    //SI NO ESTÁN TODOS AC → ALERTA Y SALIR
-    if (!$todosAC) {
+        // Validar si la empresa usa UAFE
+        $sqlParam = "
+            SELECT emmpr_uafe_cprov
+            FROM saeempr
+            WHERE empr_cod_empr = $idempresa
+        ";
+        $usaUafe = consulta_string($sqlParam, 'emmpr_uafe_cprov', $oCon, 'f');
 
-        // BLOQUEAR RADIOS
-        $oReturn->script("habilitarEstadoProveedor(true);");
+        if ($usaUafe !== 't') {
+            $oReturn->script("habilitarEstadoProveedor(false);");
+            $oReturn->script("consultarAdjuntosUafe();");
+            return $oReturn;
+        }
 
-        $oReturn->script("
-            Swal.fire({
-                icon: 'warning',
-                title: 'Documentos incompletos',
-                text: 'Faltan documentos UAFE por cumplir.',
-                confirmButtonText: 'Aceptar'
+        // Revisión final de cumplimiento UAFE luego de guardar
+        $sqlCatalogo = "
+            SELECT id
+            FROM comercial.archivos_uafe
+            WHERE empr_cod_empr = $idempresa
+              AND estado = 'AC'
+        ";
+
+        $requeridos = array();
+        if ($oCon->Query($sqlCatalogo) && $oCon->NumFilas() > 0) {
+            do {
+                $requeridos[] = intval($oCon->f('id'));
+            } while ($oCon->SiguienteRegistro());
+        }
+
+        $todosAC = true;
+        if (count($requeridos) > 0) {
+            $listaIds = implode(',', $requeridos);
+            $sqlEstados = "
+                SELECT id_archivo_uafe, estado
+                FROM comercial.adjuntos_clpv
+                WHERE id_clpv = $id_clpv
+                  AND id_empresa = $idempresa
+                  AND id_archivo_uafe IN ($listaIds)
+                  AND estado <> 'AN'
+            ";
+
+            $cumplimiento = array();
+            foreach ($requeridos as $idReq) {
+                $cumplimiento[$idReq] = false;
+            }
+
+            if ($oCon->Query($sqlEstados) && $oCon->NumFilas() > 0) {
+                do {
+                    $idReq = intval($oCon->f('id_archivo_uafe'));
+                    $estadoDoc = trim($oCon->f('estado'));
+                    if ($estadoDoc === 'AC' && array_key_exists($idReq, $cumplimiento)) {
+                        $cumplimiento[$idReq] = true;
+                    }
+                } while ($oCon->SiguienteRegistro());
+            }
+
+            $faltantes = array_filter($cumplimiento, function ($aprobado) {
+                return !$aprobado;
             });
-        ");
 
-        return $oReturn;
+            $todosAC = count($faltantes) === 0;
+        }
+
+        if ($todosAC) {
+            $sqlUpd = "
+                UPDATE saeclpv
+                SET clpv_est_clpv = 'A'
+                WHERE clpv_cod_clpv = $id_clpv
+                  AND clpv_cod_empr = $idempresa;
+            ";
+            $oCon->Query($sqlUpd);
+            $oReturn->script("habilitarEstadoProveedor(false);");
+            $oReturn->script("
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Documentos UAFE guardados',
+                    text: 'Todos los documentos están cumplidos. El proveedor queda activo.',
+                    confirmButtonText: 'Aceptar'
+                });
+            ");
+        } else {
+            $oReturn->script("habilitarEstadoProveedor(true);");
+            $oReturn->script("
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'Documentos incompletos',
+                    text: 'Faltan documentos UAFE por cumplir.',
+                    confirmButtonText: 'Aceptar'
+                });
+            ");
+        }
+
+        $oReturn->script("consultarAdjuntosUafe();");
+        $oReturn->script("xajax_validarEstadoUAFEProveedor($id_clpv);");
+
+    } catch (Exception $e) {
+        $oCon->QueryT("ROLLBACK;");
+        $oReturn->alert($e->getMessage());
     }
-
-    //SI TODO ESTÁ AC ACTUALIZAR ESTADO DEL PROVEEDOR A 'A'
-    $sqlUpd = "
-        UPDATE saeclpv
-        SET clpv_est_clpv = 'A'
-        WHERE clpv_cod_clpv = $id_clpv
-          AND clpv_cod_empr = $idempresa;
-    ";
-
-    $oCon->Query($sqlUpd);
-
-    // HABILITAR RADIOS
-    $oReturn->script("habilitarEstadoProveedor(false);");
-
-    //CONFIRMACIÓN
-    $oReturn->script("
-        Swal.fire({
-            icon: 'success',
-            title: 'Guardar Documentos UAFE del Proveedor',
-            text: 'Todos los documentos están cumplidos. Estado del proveedor cambiara a estado ACTIVO.',
-            confirmButtonText: 'Aceptar'
-        });
-    ");
 
     return $oReturn;
 }
