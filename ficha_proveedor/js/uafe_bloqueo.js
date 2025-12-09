@@ -2,15 +2,18 @@
 // BLOQUEO UAFE – Función central del módulo proveedor
 // ---------------------------------------------------------
 function habilitarEstadoProveedor(bloquear) {
-    console.log("Ejecutando habilitarEstadoProveedor. bloquear=", bloquear);
+    const bloquearEstado = bloquear === true || bloquear === 'true' || bloquear === 1 || bloquear === '1';
+    console.log("Ejecutando habilitarEstadoProveedor. bloquear=", bloquearEstado);
 
     const radios = document.querySelectorAll('input[name="estado"]');
-    radios.forEach(r => r.disabled = bloquear);
+    radios.forEach((r) => {
+        r.disabled = bloquearEstado;
+    });
 
-    if (bloquear) {
+    if (bloquearEstado) {
         const pe = document.getElementById("PE");
         if (pe) pe.checked = true;
     }
 
-    console.log("Radios " + (bloquear ? "bloqueados" : "habilitados"));
+    console.log("Radios " + (bloquearEstado ? "bloqueados" : "habilitados"));
 }

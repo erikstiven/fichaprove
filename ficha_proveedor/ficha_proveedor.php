@@ -572,6 +572,7 @@ if (isset($_REQUEST['codpedi'])) {
         }
 
         function seleccionaItem(id) {
+            habilitarEstadoProveedor(true);
             xajax_seleccionaItem(xajax.getFormValues("form1"), id);
         }
 
