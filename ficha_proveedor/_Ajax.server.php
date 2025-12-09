@@ -7946,6 +7946,20 @@ function guardarAdjuntosUAFE($aForm = '')
         return $oReturn;
     }
 
+    $estadoPrevioProv = '';
+    $sqlEstadoProv = "
+        SELECT clpv_est_clpv
+        FROM saeclpv
+        WHERE clpv_cod_clpv = $id_clpv
+          AND clpv_cod_empr = $idempresa
+          AND clpv_cod_sucu = $idsucursal
+        LIMIT 1;
+    ";
+
+    if ($oCon->Query($sqlEstadoProv) && $oCon->NumFilas() > 0) {
+        $estadoPrevioProv = trim($oCon->f('clpv_est_clpv'));
+    }
+
     // Estados seleccionados desde el formulario (checkboxes marcados = AC)
     $seleccionados = array();
     foreach ($catalogo as $idDoc => $tituloDoc) {
@@ -7984,6 +7998,7 @@ function guardarAdjuntosUAFE($aForm = '')
 
     $huboCambios    = false;
     $cumpleDespues  = false;
+    $cambioEstadoProveedor = false;
 
     try {
         $oCon->QueryT("BEGIN;");
@@ -8032,14 +8047,17 @@ function guardarAdjuntosUAFE($aForm = '')
         $cumpleDespues = $usaValidacion ? proveedorCumpleUafe($idempresa, $idsucursal, $id_clpv, $oCon) : true;
 
         if ($cumpleDespues) {
-            $sqlActivar = "
-                UPDATE saeclpv
-                SET clpv_est_clpv = 'A'
-                WHERE clpv_cod_clpv = $id_clpv
-                  AND clpv_cod_empr = $idempresa
-                  AND clpv_cod_sucu = $idsucursal;
-            ";
-            $oCon->QueryT($sqlActivar);
+            if (in_array($estadoPrevioProv, array('P', 'PE'))) {
+                $sqlActivar = "
+                    UPDATE saeclpv
+                    SET clpv_est_clpv = 'A'
+                    WHERE clpv_cod_clpv = $id_clpv
+                      AND clpv_cod_empr = $idempresa
+                      AND clpv_cod_sucu = $idsucursal;
+                ";
+                $oCon->QueryT($sqlActivar);
+                $cambioEstadoProveedor = true;
+            }
         }
 
         $oCon->QueryT("COMMIT;");
@@ -8064,17 +8082,26 @@ function guardarAdjuntosUAFE($aForm = '')
         if ($cumpleDespues) {
             $oReturn->script("habilitarEstadoProveedor(false);");
             $oReturn->script("habilitarCumplimientoUafe(true);");
-            $textoModal = $huboCambios
-                ? 'Los documentos UAFE se guardaron correctamente. El proveedor ahora está Activo.'
-                : 'El proveedor ya cumple con los requisitos UAFE y se mantiene Activo.';
-            $iconoModal = 'success';
+            if ($cambioEstadoProveedor) {
+                $textoModal = 'Los documentos UAFE se guardaron correctamente. El proveedor cumple los requisitos y su estado ha sido actualizado a Activo.';
+                $iconoModal = 'success';
+            } elseif ($huboCambios) {
+                $textoModal = 'Los documentos UAFE se guardaron correctamente. El proveedor cumple los requisitos UAFE.';
+                $iconoModal = 'success';
+            } else {
+                $textoModal = 'No se registraron cambios en documentos UAFE. El proveedor cumple los requisitos UAFE.';
+                $iconoModal = 'info';
+            }
         } else {
             $oReturn->script("habilitarEstadoProveedor(true);");
             $oReturn->script("habilitarCumplimientoUafe(false);");
-            $textoModal = $huboCambios
-                ? 'Los documentos se guardaron, pero todavía faltan archivos por cumplir.'
-                : 'No se registraron cambios en documentos UAFE. El proveedor no cumple con los requisitos.';
-            $iconoModal = $huboCambios ? 'warning' : 'info';
+            if ($huboCambios) {
+                $textoModal = 'Los documentos se guardaron, pero el proveedor todavía no cumple los requisitos UAFE.';
+                $iconoModal = 'warning';
+            } else {
+                $textoModal = 'No se registraron cambios en documentos UAFE. El proveedor no cumple con los requisitos UAFE.';
+                $iconoModal = 'info';
+            }
         }
     } else {
         $oReturn->script("habilitarEstadoProveedor(false);");
