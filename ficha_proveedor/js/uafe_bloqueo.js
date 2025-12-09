@@ -11,8 +11,11 @@ function habilitarEstadoProveedor(bloquear) {
     });
 
     if (bloquearEstado) {
-        const pe = document.getElementById("PE");
-        if (pe) pe.checked = true;
+        const algunoMarcado = Array.from(radios).some((r) => r.checked);
+        if (!algunoMarcado) {
+            const pe = document.getElementById("PE");
+            if (pe) pe.checked = true;
+        }
     }
 
     console.log("Radios " + (bloquearEstado ? "bloqueados" : "habilitados"));

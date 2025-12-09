@@ -7162,7 +7162,7 @@ function debeBloquearEstadoPorUafe($idempresa, $id_clpv, $oCon)
     }
 
     $sql = "
-        SELECT estado, fecha_entrega
+        SELECT estado
         FROM comercial.adjuntos_clpv
         WHERE id_clpv = $id_clpv
           AND id_empresa = $idempresa
@@ -7170,29 +7170,23 @@ function debeBloquearEstadoPorUafe($idempresa, $id_clpv, $oCon)
           AND estado <> 'AN'
     ";
 
+    $hayDocumentos = false;
     $todosAprobados = true;
-    $hayVencidos = false;
-    $hoy = date('Y-m-d');
 
     if ($oCon->Query($sql) && $oCon->NumFilas() > 0) {
+        $hayDocumentos = true;
+
         do {
             $estado = trim($oCon->f('estado'));
-            $venc = $oCon->f('fecha_entrega');
 
             if ($estado !== 'AC') {
                 $todosAprobados = false;
             }
-
-            if (!empty($venc) && $venc < $hoy) {
-                $hayVencidos = true;
-            }
         } while ($oCon->SiguienteRegistro());
-    } else {
-        // Sin documentos UAFE → mantener bloqueado hasta que cumpla
-        $todosAprobados = false;
     }
 
-    return $hayVencidos || !$todosAprobados;
+    // Bloquear si no hay documentos UAFE registrados o si alguno no está aprobado
+    return !$hayDocumentos || !$todosAprobados;
 }
 
 function validarEstadoUAFEProveedor($id_clpv)
