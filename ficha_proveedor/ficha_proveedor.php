@@ -257,9 +257,9 @@ if (isset($_REQUEST['codpedi'])) {
             let SU = document.getElementById("SU");
             let PE = document.getElementById("PE");
 
-            if (!AC.disabled) AC.checked = (estado === "AC" || estado === "A");
-            if (!SU.disabled) SU.checked = (estado === "SU" || estado === "S");
-            if (!PE.disabled) PE.checked = (estado === "PE" || estado === "P");
+            if (AC) AC.checked = (estado === "AC" || estado === "A");
+            if (SU) SU.checked = (estado === "SU" || estado === "S");
+            if (PE) PE.checked = (estado === "PE" || estado === "P");
         }
 
         function cerrar() {
@@ -898,19 +898,11 @@ if (isset($_REQUEST['codpedi'])) {
         }
 
         function consultarAdjuntos() {
-            var cliente = $("#codigoCliente").val();
-            if (cliente != '') {
-                xajax_consultarAdjuntos(xajax.getFormValues("form1"));
-            } else {
-                alert("Seleccione Cliente para continuar...!");
-            }
+            xajax_consultarAdjuntos(xajax.getFormValues("form1"));
         }
 
         // Consultar documentos UAFE del proveedor seleccionado
         function consultarAdjuntosUafe() {
-            console.log("CLICK: ejecutar UAFE");
-            console.log("Cliente =", $("#codigoCliente").val());
-
             xajax_consultarAdjuntosUafe(xajax.getFormValues("form1"));
         }
 
@@ -1545,14 +1537,14 @@ if (isset($_REQUEST['codpedi'])) {
 
     <script>
         genera_formulario(); /*genera_detalle();genera_form_detalle();*/
+        consultarAdjuntos();
+        consultarAdjuntosUafe();
     </script>
 
     <?php
-        if ($usaUAFE == 't') {
-            echo "<script> habilitarEstadoProveedor(true); </script>";
-        } else {
-            echo "<script> habilitarEstadoProveedor(false); </script>";
-        }
+        $usaUafeBool = ($usaUAFE == 't') ? 'true' : 'false';
+        $scriptInicial = "var elCod=document.getElementById('codigoCliente');var esNuevo=!elCod||elCod.value==='';prepararEstadoUAFEInicial($usaUafeBool, esNuevo);";
+        echo "<script>$scriptInicial</script>";
     ?>
     <script src="js/google_maps.js"></script>
     <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyB8pAD65yn2Qtj_DTowH8xUUkUB6U_SRN0&callback=initMap"></script>
