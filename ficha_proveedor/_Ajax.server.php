@@ -2211,8 +2211,8 @@ function verifica_tipo_mapa($latitud = 0, $longitud = 0, $aForm = '')
         $oReturn->assign('cod_cuenta_in', 'value', $clpv_cod_cuen);
         $valorIdentificacion = trim($clv_con_clpv);
         $valorIdentificacionPadded = str_pad($valorIdentificacion, 2, '0', STR_PAD_LEFT);
-        // Preferir el valor rellenado para coincidir con las opciones del combo
-        $oReturn->assign('identificacion', 'value', $valorIdentificacionPadded);
+        // Cargar el valor almacenado y dejar que el ajuste JS sincronice con el combo/Chosen
+        $oReturn->assign('identificacion', 'value', $valorIdentificacion);
         $oReturn->assign('ruc_cli', 'value', $clpv_ruc_clpv);
         $oReturn->assign('nombre', 'value', $clpv_nom_clpv);
         $oReturn->assign('nombre_comercial', 'value', $clpv_nom_come);
@@ -5288,6 +5288,7 @@ function guardar_cliente($cod, $aForm = '')
     $limite     = $aForm['limite'];
     $dia         = $aForm['dias_pago'];
     $estado     = $aForm['estado'];
+    $codigoCliente = isset($aForm['codigoCliente']) ? $aForm['codigoCliente'] : '';
 
     //echo $estado;exit;
     $dsctDetalle = $aForm['dsctDetalle'];
@@ -5417,14 +5418,23 @@ function guardar_cliente($cod, $aForm = '')
         where empr_cod_empr = $idempresa
     ";
     $usaUafe = consulta_string($sqlUafe, 'emmpr_uafe_cprov', $oIfx, 'N');
-    //echo $sqlUafe; exit;
 
-    // Si el campo de la empresa está en S = activar UAFE
-  
-    if ($usaUafe == 't' || $usaUafe == 'true' || $usaUafe == '1' || $usaUafe == 1) {
+    // Mantener el estado real cuando se edita: si viene vacío, obténgalo de la BD
+    if (empty($estado) && !empty($codigoCliente)) {
+        $sqlEstadoActual = "
+            select clpv_est_clpv
+            from saeclpv
+            where clpv_cod_empr = $idempresa
+              and clpv_cod_clpv = $codigoCliente
+            limit 1
+        ";
+        $estado = consulta_string_func($sqlEstadoActual, 'clpv_est_clpv', $oIfx, 'P');
+    }
+
+    // Solo los nuevos proveedores deben iniciar en Pendiente cuando UAFE esté activo
+    if (empty($codigoCliente) && ($usaUafe == 't' || $usaUafe == 'true' || $usaUafe == '1' || $usaUafe == 1)) {
         $estado = 'P';
     }
-    //echo $estado; exit;
     
     // --------------------------------------------------
     // FIN VALIDAR SI UAFE ESTÁ ACTIVO EN SAEEMPR
