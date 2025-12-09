@@ -264,6 +264,37 @@ if (isset($_REQUEST['codpedi'])) {
             PE.checked = (estadoNormalizado === "PE" || estadoNormalizado === "P");
         }
 
+        function ajustarComboIdentificacion(valor, valorPadded) {
+            var select = document.getElementById('identificacion');
+            if (!select) {
+                return;
+            }
+
+            var candidatos = [];
+            if (valor !== undefined && valor !== null) {
+                candidatos.push(valor.toString());
+            }
+            if (valorPadded !== undefined && valorPadded !== null) {
+                candidatos.push(valorPadded.toString());
+            }
+
+            var valorNumerico = parseInt(valorPadded || valor, 10);
+            if (!isNaN(valorNumerico)) {
+                candidatos.push(valorNumerico.toString());
+            }
+
+            for (var i = 0; i < candidatos.length; i++) {
+                var candidato = candidatos[i];
+                if (!candidato) continue;
+                for (var j = 0; j < select.options.length; j++) {
+                    if (select.options[j].value == candidato) {
+                        select.value = candidato;
+                        return;
+                    }
+                }
+            }
+        }
+
         function cerrar() {
             parent.CloseAjaxWin();
         }

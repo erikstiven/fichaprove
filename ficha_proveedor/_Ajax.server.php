@@ -2177,21 +2177,6 @@ function verifica_tipo_mapa($latitud = 0, $longitud = 0, $aForm = '')
                 $oReturn->assign('tip_fact_cli', 'value', $tip_fac_clpv);
                 $oReturn->assign('ruta_visita_cli', 'value', $ruta_visita_cli);
 
-                // echo $clv_con_clpv;exit;
-                if ($clv_con_clpv == 1) {
-                    $clv_con_clpv = '01';
-                }
-
-                // echo $clv_con_clpv;exit;
-
-                if ($clv_con_clpv == 2) {
-                    $clv_con_clpv = '02';
-                }
-                if ($clv_con_clpv == 3) {
-                    $clv_con_clpv = '03';
-                }
-
-
                 if ($clpv_ret_sn == 'S') {
                     $oReturn->assign('clpv_ret_sn', 'checked', true);
                 } else {
@@ -2224,7 +2209,9 @@ function verifica_tipo_mapa($latitud = 0, $longitud = 0, $aForm = '')
         //echo $clpv_cod_uniq;
         $oReturn->assign('codigoUnico', 'value', $clpv_cod_uniq);
         $oReturn->assign('cod_cuenta_in', 'value', $clpv_cod_cuen);
-        $oReturn->assign('identificacion', 'value', $clv_con_clpv);
+        $valorIdentificacion = trim($clv_con_clpv);
+        $valorIdentificacionPadded = str_pad($valorIdentificacion, 2, '0', STR_PAD_LEFT);
+        $oReturn->assign('identificacion', 'value', $valorIdentificacion);
         $oReturn->assign('ruc_cli', 'value', $clpv_ruc_clpv);
         $oReturn->assign('nombre', 'value', $clpv_nom_clpv);
         $oReturn->assign('nombre_comercial', 'value', $clpv_nom_come);
@@ -2250,6 +2237,8 @@ function verifica_tipo_mapa($latitud = 0, $longitud = 0, $aForm = '')
         $oReturn->assign('latitud_tmp', 'value', $clpv_ubi_lati);
         $oReturn->assign('longitud_tmp', 'value', $clpv_ubi_long);
         $oReturn->assign('identificacion_sf', 'value', $clpv_ruc_tran);
+
+        $oReturn->script("ajustarComboIdentificacion('" . $valorIdentificacion . "', '" . $valorIdentificacionPadded . "');");
 
         //  echo $clpv_est_clpv;exit;
 
@@ -7372,11 +7361,9 @@ function validarEstadoUAFEProveedor($id_clpv)
     $oReturn->script("habilitarEstadoProveedor(" . ($bloquear ? 'true' : 'false') . ");");
 
     $estadoVisual = obtenerEstadoProveedorInformix($idempresa, $id_clpv);
-    if ($estadoVisual === '') {
-        $estadoVisual = $bloquear ? 'PE' : 'AC';
+    if ($estadoVisual !== '') {
+        $oReturn->script("editar('$estadoVisual');");
     }
-
-    $oReturn->script("editar('$estadoVisual');");
 
     return $oReturn;
 }
