@@ -962,8 +962,7 @@ if (isset($_SESSION['U_EMPRESA'])) {
         }
 
         function guardarAdjuntosUAFE() {
-            let id_clpv = document.getElementById("codigoCliente").value;
-            xajax_guardarAdjuntosUAFE(id_clpv);
+            xajax_guardarAdjuntosUAFE(xajax.getFormValues("form1"));
         }
 
     </script>
@@ -1573,7 +1572,7 @@ if (isset($_SESSION['U_EMPRESA'])) {
 
     <?php
         $usaUAFE_js = ($usaUAFE === 't') ? 't' : 'f';
-        echo "<script>var usaUAFE = '$usaUAFE_js'; if (usaUAFE === \"t\") { habilitarEstadoProveedor(true); } else { habilitarEstadoProveedor(false); }</script>";
+        echo "<script>setParametroUafe('$usaUAFE_js'); if (usaUAFE === \"t\") { habilitarEstadoProveedor(true); habilitarCumplimientoUafe(false); } else { habilitarEstadoProveedor(false); habilitarCumplimientoUafe(true); }</script>";
     ?>
     <script src="js/google_maps.js"></script>
     <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyB8pAD65yn2Qtj_DTowH8xUUkUB6U_SRN0&callback=initMap"></script>

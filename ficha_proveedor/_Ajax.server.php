@@ -14,6 +14,87 @@ if (!function_exists('normalizarBanderaUafe')) {
     }
 }
 
+if (!function_exists('obtenerBanderaUafeEmpresa')) {
+    function obtenerBanderaUafeEmpresa($idempresa, $oCon)
+    {
+        $sql = "
+            SELECT emmpr_uafe_cprov
+            FROM saeempr
+            WHERE empr_cod_empr = $idempresa;
+        ";
+
+        return normalizarBanderaUafe(consulta_string($sql, 'emmpr_uafe_cprov', $oCon, 'f'));
+    }
+}
+
+if (!function_exists('proveedorCumpleUafe')) {
+    function proveedorCumpleUafe($idEmpresa, $idSucursal, $idClpv, $oCon)
+    {
+        $idEmpresa  = intval($idEmpresa);
+        $idSucursal = intval($idSucursal);
+        $idClpv     = intval($idClpv);
+
+        if ($idEmpresa <= 0 || $idClpv <= 0) {
+            return false;
+        }
+
+        $sqlCatalogo = "
+            SELECT id
+            FROM comercial.archivos_uafe
+            WHERE empr_cod_empr = $idEmpresa
+              AND estado = 'AC'
+        ";
+
+        $requeridos = array();
+
+        if ($oCon->Query($sqlCatalogo) && $oCon->NumFilas() > 0) {
+            do {
+                $requeridos[] = intval($oCon->f('id'));
+            } while ($oCon->SiguienteRegistro());
+        }
+
+        if (count($requeridos) === 0) {
+            return true;
+        }
+
+        $cumplimiento = array();
+        foreach ($requeridos as $idDoc) {
+            $cumplimiento[$idDoc] = false;
+        }
+
+        $listaIds = implode(',', $requeridos);
+
+        $sqlAdjuntos = "
+            SELECT id_archivo_uafe, estado
+            FROM comercial.adjuntos_clpv
+            WHERE id_clpv = $idClpv
+              AND id_empresa = $idEmpresa
+              AND id_sucursal = $idSucursal
+              AND id_archivo_uafe IN ($listaIds)
+              AND estado <> 'AN'
+        ";
+
+        if ($oCon->Query($sqlAdjuntos) && $oCon->NumFilas() > 0) {
+            do {
+                $idDoc = intval($oCon->f('id_archivo_uafe'));
+                $estado = trim($oCon->f('estado'));
+
+                if ($estado === 'AC' && array_key_exists($idDoc, $cumplimiento)) {
+                    $cumplimiento[$idDoc] = true;
+                }
+            } while ($oCon->SiguienteRegistro());
+        }
+
+        foreach ($cumplimiento as $aprobado) {
+            if (!$aprobado) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+}
+
 /* :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
   // S E R V I D O R   A J A X //
   :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: */
@@ -1138,80 +1219,14 @@ function genera_formulario_cliente($sAccion = 'nuevo', $aForm = '', $cod, $pedi)
             WHERE empr_cod_empr = $idempresa;
         ";
 
-        $usaUAFE = normalizarBanderaUafe(consulta_string($sqlUafeEmp, 'emmpr_uafe_cprov', $oCon, 'f'));
-        $oReturn->script("
-            console.log('%cline 1: VALOR RAW DE usaUAFE = ' + JSON.stringify('$usaUAFE'), 'color:yellow;font-weight:bold');
-        ");
-        $oReturn->script("window.usaUAFE = '$usaUAFE';");
+        $usaUAFE = obtenerBanderaUafeEmpresa($idempresa, $oCon);
+        $oReturn->script("setParametroUafe('$usaUAFE');");
 
         //------------------------------------------------------------------------------
         //  FIN VALIDACIÓN UAFE PARA HABILITAR/DESHABILITAR ESTADO
         //------------------------------------------------------------------------------
 
-        //------------------------------------------------------------------------------
-    //  BLOQUE UAFE: BLOQUEAR/HABILITAR ESTADO EN EDICIÓN SEGÚN DOCUMENTOS
-    //------------------------------------------------------------------------------
-
-    if ($sAccion == 'editar' && $usaUAFE == 't') {
-
-        $sqlUafeDocs = "
-            SELECT estado
-            FROM comercial.adjuntos_clpv
-            WHERE id_clpv = $cod;
-        ";
-
-        $resultUafe = $oCon->query($sqlUafeDocs);
-
-        $hayPendiente = false;
-        $haySuspendido = false;
-        $totalDocs = 0;
-        $totalAprobados = 0;
-
-        while ($row = $oCon->fetch($resultUafe)) {
-            $totalDocs++;
-
-            if ($row['estado'] == 'PE') {
-                $hayPendiente = true;
-            }
-
-            if ($row['estado'] == 'S') {
-                $haySuspendido = true;
-            }
-
-            if ($row['estado'] == 'AC') {
-                $totalAprobados++;
-            }
-        }
-
-        $oReturn->script("console.log('%cDOCS UAFE → Total: $totalDocs, Aprobados: $totalAprobados','color:blue;font-weight:bold');");
-
-        // Caso 1: documentos pendientes o suspendidos → BLOQUEAR
-        if ($hayPendiente || $haySuspendido) {
-
-            $oReturn->script("
-                console.log('%cDocumentos PE/S → BLOQUEAR estado','color:red;font-weight:bold');
-                setTimeout(function(){ habilitarEstadoProveedor(true); }, 200);
-            ");
-
-        } else {
-
-            // Caso 2: todos aprobados → HABILITAR
-            if ($totalDocs > 0 && $totalDocs == $totalAprobados) {
-
-                $oReturn->script("
-                    console.log('%cTodos AC → HABILITAR estado','color:green;font-weight:bold');
-                    setTimeout(function(){ habilitarEstadoProveedor(false); }, 200);
-                ");
-
-            } else {
-                // Caso raro: sin documentos → habilitar
-                $oReturn->script("
-                    console.log('%cSin documentos UAFE → habilitar por default','color:orange;font-weight:bold');
-                    setTimeout(function(){ habilitarEstadoProveedor(false); }, 200);
-                ");
-            }
-        }
-    }
+        //  BLOQUEO UAFE CONTROLADO POR validarEstadoUAFEProveedor
 
         //variable del chekc del web service
         $S_URL_API_SRI_SN = $_SESSION['S_URL_API_SRI_SN'];
@@ -1508,47 +1523,22 @@ function genera_formulario_cliente($sAccion = 'nuevo', $aForm = '', $cod, $pedi)
         $sHtml .= '</table>';
 
         $oReturn->assign("divFormularioCli", "innerHTML", $sHtml);
-        $oReturn->script("console.log('DEBUG: FORMULARIO GENERADO');");
 
-        $oReturn->script("console.log('ACCION REAL = [$sAccion]');");
-        $oReturn->script("console.log('usaUAFE = [$usaUAFE]');");
-
-
-        $oReturn->script("
-            console.log('%cline 2: Evaluando condicional…','color:cyan;font-weight:bold');
-            console.log('%c  sAccion: $sAccion','color:cyan');
-            console.log('%c  usaUAFE: $usaUAFE  (tipo: " . gettype($usaUAFE) . ")','color:cyan');
-            console.log('%c  Condicion (usaUAFE == \"t\"): ' + (" . ($usaUAFE == 't' ? 'true' : 'false') . "), 'color:cyan');
-        ");
-
-
-
-        if ($sAccion == 'nuevo' && $usaUAFE == 't') {
-
-            $oReturn->script("
-                console.log('%cline 3: ENTRÓ AL IF DE BLOQUEO', 'color:lime;font-weight:bold');
-            ");
-
-            $oReturn->script("
-                console.log('UAFE Nuevo: Bloqueando radios…');
-                setTimeout(function(){
-                    try {
-                        habilitarEstadoProveedor(true);
-                        console.log('%cBloqueo aplicado correctamente','color:orange;font-weight:bold');
-                    } catch(e){
-                        console.log('ERROR bloqueo nuevo:', e);
-                    }
-                }, 200);
-            ");
-
-        } else {
-            $oReturn->script("console.log('%cline 3: NO ENTRÓ AL IF (no se bloquea)', 'color:red;font-weight:bold');");
+        if ($sAccion == 'nuevo') {
+            if ($usaUAFE == 't') {
+                $oReturn->script("setParametroUafe('t');");
+                $oReturn->script("habilitarEstadoProveedor(true);");
+                $oReturn->script("habilitarCumplimientoUafe(false);");
+                $oReturn->script("setTimeout(function(){ if(document.getElementById('PE')){ document.getElementById('PE').checked = true; } }, 200);");
+            } else {
+                $oReturn->script("setParametroUafe('f');");
+                $oReturn->script("habilitarEstadoProveedor(false);");
+                $oReturn->script("habilitarCumplimientoUafe(true);");
+            }
         }
 
 
-
-
-        $oReturn->assign("divReporteCli", "innerHTML", $table);
+$oReturn->assign("divReporteCli", "innerHTML", $table);
         $oReturn->assign("divFormularioDatos", "innerHTML", $tableDatos);
         $oReturn->assign("divFormularioCcli", "innerHTML", $tableCcli);
         $oReturn->assign("divFormularioProdServClpv", "innerHTML", $tableProdServ);
@@ -7197,109 +7187,35 @@ function validarEstadoUAFEProveedor($id_clpv)
     $idsucursal = $_SESSION['U_SUCURSAL'];
     $id_clpv    = intval($id_clpv);
 
-    if ($id_clpv <= 0) {
-        $oReturn->script("habilitarEstadoProveedor(true);");
-        return $oReturn;
-    }
-
     // Conexión
     $oCon = new Dbo();
     $oCon->DSN = $DSN;
     $oCon->Conectar();
 
-    //----------------------------------------------------------
-    // 1. VERIFICAR SI LA EMPRESA USA VALIDACIÓN UAFE
-    //----------------------------------------------------------
-    $sqlUafe = "
-        SELECT emmpr_uafe_cprov
-        FROM saeempr
-        WHERE empr_cod_empr = $idempresa
-    ";
+    $usaUAFE = obtenerBanderaUafeEmpresa($idempresa, $oCon);
+    $oReturn->script("setParametroUafe('$usaUAFE');");
 
-    $usaUAFE = normalizarBanderaUafe(consulta_string($sqlUafe, 'emmpr_uafe_cprov', $oCon, 'f'));
-
-    $oReturn->script("window.usaUAFE = '$usaUAFE';");
-
-    if ($usaUAFE != 't') {
-        // UAFE deshabilitado - radios siempre habilitados
+    if ($usaUAFE !== 't') {
         $oReturn->script("habilitarEstadoProveedor(false);");
+        $oReturn->script("habilitarCumplimientoUafe(true);");
         return $oReturn;
     }
 
-    // Punto de control: con UAFE activo, bloquear por defecto hasta validar
-    $oReturn->script("habilitarEstadoProveedor(true);");
-
-    //----------------------------------------------------------
-    // 2. CONSULTAR DOCUMENTOS REQUERIDOS POR UAFE (CATÁLOGO)
-    //----------------------------------------------------------
-    $sqlCatalogo = "
-        SELECT id
-        FROM comercial.archivos_uafe
-        WHERE empr_cod_empr = $idempresa
-          AND estado = 'AC'
-    ";
-
-    $documentosRequeridos = array();
-
-    if ($oCon->Query($sqlCatalogo) && $oCon->NumFilas() > 0) {
-        do {
-            $documentosRequeridos[] = intval($oCon->f('id'));
-        } while ($oCon->SiguienteRegistro());
-    }
-
-    // Si no hay documentos configurados, no se bloquea el campo Estado
-    if (count($documentosRequeridos) === 0) {
-        $oReturn->script("habilitarEstadoProveedor(false);");
-        return $oReturn;
-    }
-
-    //----------------------------------------------------------
-    // 3. VALIDAR DOCUMENTOS UAFE ENTREGADOS POR EL PROVEEDOR
-    //----------------------------------------------------------
-    $listaIds = implode(',', $documentosRequeridos);
-
-    $sqlAdjuntos = "
-        SELECT id_archivo_uafe, estado
-        FROM comercial.adjuntos_clpv
-        WHERE id_clpv = $id_clpv
-          AND id_empresa = $idempresa
-          AND id_sucursal = $idsucursal
-          AND id_archivo_uafe IN ($listaIds)
-          AND estado <> 'AN'
-    ";
-
-    // Estado de cumplimiento por cada documento requerido
-    $cumplimiento = array();
-    foreach ($documentosRequeridos as $idDoc) {
-        $cumplimiento[$idDoc] = false;
-    }
-
-    if ($oCon->Query($sqlAdjuntos) && $oCon->NumFilas() > 0) {
-        do {
-            $idDoc = intval($oCon->f('id_archivo_uafe'));
-            $estado = trim($oCon->f('estado'));
-
-            if ($estado === 'AC' && array_key_exists($idDoc, $cumplimiento)) {
-                $cumplimiento[$idDoc] = true;
-            }
-        } while ($oCon->SiguienteRegistro());
-    }
-
-    //----------------------------------------------------------
-    // 4. REGLA FINAL: TODOS LOS DOCUMENTOS REQUERIDOS DEBEN ESTAR APROBADOS
-    //----------------------------------------------------------
-    $faltantes = array_filter($cumplimiento, function ($aprobado) {
-        return !$aprobado;
-    });
-
-    // Si existe al menos un documento pendiente o rechazado → bloquear
-    if (count($faltantes) > 0) {
+    if ($id_clpv <= 0) {
         $oReturn->script("habilitarEstadoProveedor(true);");
+        $oReturn->script("habilitarCumplimientoUafe(false);");
         return $oReturn;
     }
 
-    // Todos los documentos requeridos están aprobados → habilitar
-    $oReturn->script("habilitarEstadoProveedor(false);");
+    $cumple = proveedorCumpleUafe($idempresa, $idsucursal, $id_clpv, $oCon);
+
+    if ($cumple) {
+        $oReturn->script("habilitarEstadoProveedor(false);");
+        $oReturn->script("habilitarCumplimientoUafe(true);");
+    } else {
+        $oReturn->script("habilitarEstadoProveedor(true);");
+        $oReturn->script("habilitarCumplimientoUafe(false);");
+    }
 
     return $oReturn;
 }
@@ -7960,7 +7876,7 @@ function consultarAdjuntosUafe($aForm = '')
                     <td>$fecVenc</td>
                     <td>$estadoMostrar</td>
                     <td align='center'>
-                        <input type='checkbox' $checked
+                        <input type='checkbox' class='chkCumplimientoUafe' name='cumplimiento[$id_uafe]' value='1' $checked
                             onclick=\"cambiarEstadoUafe($id_uafe, $id_clpv, this.checked)\">
                     </td>
                     <td align='center'>$btnEliminar</td>
@@ -7982,7 +7898,8 @@ function consultarAdjuntosUafe($aForm = '')
     return $oReturn;
 }
 
-function guardarAdjuntosUAFE($id_clpv)
+
+function guardarAdjuntosUAFE($aForm = '')
 {
     if (session_status() !== PHP_SESSION_ACTIVE) {
         session_start();
@@ -7993,29 +7910,33 @@ function guardarAdjuntosUAFE($id_clpv)
 
     $idempresa  = $_SESSION['U_EMPRESA'];
     $idsucursal = $_SESSION['U_SUCURSAL'];
-    $id_clpv    = intval($id_clpv);
+    $id_clpv    = isset($aForm['codigoCliente']) ? intval($aForm['codigoCliente']) : 0;
 
     if ($id_clpv <= 0) {
         $oReturn->alert('Seleccione un proveedor antes de guardar los documentos UAFE.');
         return $oReturn;
     }
 
+    $seleccionados = array();
+    if (isset($aForm['cumplimiento']) && is_array($aForm['cumplimiento'])) {
+        foreach ($aForm['cumplimiento'] as $idDoc => $val) {
+            $seleccionados[intval($idDoc)] = 'AC';
+        }
+    }
+
+    if (isset($_SESSION['adjuntosUafeTmp'][$id_clpv]) && is_array($_SESSION['adjuntosUafeTmp'][$id_clpv])) {
+        foreach ($_SESSION['adjuntosUafeTmp'][$id_clpv] as $idDoc => $estadoTmp) {
+            $seleccionados[intval($idDoc)] = ($estadoTmp === 'AC') ? 'AC' : 'PE';
+        }
+    }
+
     $oCon = new Dbo();
     $oCon->DSN = $DSN;
     $oCon->Conectar();
 
-    $cambios = isset($_SESSION['adjuntosUafeTmp'][$id_clpv]) ? $_SESSION['adjuntosUafeTmp'][$id_clpv] : array();
-
-    // Verificar parámetro de empresa
-    $sqlParam = "
-        SELECT emmpr_uafe_cprov
-        FROM saeempr
-        WHERE empr_cod_empr = $idempresa
-    ";
-    $usaUafe = normalizarBanderaUafe(consulta_string($sqlParam, 'emmpr_uafe_cprov', $oCon, 'f'));
+    $usaUafe = obtenerBanderaUafeEmpresa($idempresa, $oCon);
     $usaValidacion = ($usaUafe === 't');
 
-    // Catálogo de documentos UAFE
     $sqlCatalogo = "
         SELECT id, titulo
         FROM comercial.archivos_uafe
@@ -8034,10 +7955,10 @@ function guardarAdjuntosUAFE($id_clpv)
         unset($_SESSION['adjuntosUafeTmp'][$id_clpv]);
         $oReturn->script("consultarAdjuntosUafe();");
         $oReturn->script("habilitarEstadoProveedor(false);");
+        $oReturn->script("habilitarCumplimientoUafe(true);");
         return $oReturn;
     }
 
-    // Estados existentes en BD
     $existentes = array();
     $listaIds   = implode(',', array_keys($catalogo));
 
@@ -8066,15 +7987,7 @@ function guardarAdjuntosUAFE($id_clpv)
         $oCon->QueryT("BEGIN;");
 
         foreach ($catalogo as $idDoc => $tituloDoc) {
-            // Determinar estado final: prioridad cambios temporales -> existente -> PE
-            if (isset($cambios[$idDoc])) {
-                $estadoFinal = ($cambios[$idDoc] === 'AC') ? 'AC' : 'PE';
-            } elseif (isset($existentes[$idDoc])) {
-                $estadoFinal = trim($existentes[$idDoc]['estado']);
-            } else {
-                $estadoFinal = 'PE';
-            }
-
+            $estadoFinal = isset($seleccionados[$idDoc]) ? $seleccionados[$idDoc] : 'PE';
             $fechaEntrega = ($estadoFinal === 'AC') ? "CURRENT_DATE" : "NULL";
 
             if (isset($existentes[$idDoc])) {
@@ -8107,16 +8020,24 @@ function guardarAdjuntosUAFE($id_clpv)
         return $oReturn;
     }
 
-    // Limpia los cambios temporales del proveedor actual
     unset($_SESSION['adjuntosUafeTmp'][$id_clpv]);
 
     $oReturn->script("consultarAdjuntosUafe();");
 
     if ($usaValidacion) {
-        $oReturn->script("xajax_validarEstadoUAFEProveedor($id_clpv);");
+        if (proveedorCumpleUafe($idempresa, $idsucursal, $id_clpv, $oCon)) {
+            $oReturn->script("habilitarEstadoProveedor(false);");
+            $oReturn->script("habilitarCumplimientoUafe(true);");
+        } else {
+            $oReturn->script("habilitarEstadoProveedor(true);");
+            $oReturn->script("habilitarCumplimientoUafe(false);");
+        }
     } else {
         $oReturn->script("habilitarEstadoProveedor(false);");
+        $oReturn->script("habilitarCumplimientoUafe(true);");
     }
+
+    $oReturn->script("xajax_validarEstadoUAFEProveedor($id_clpv);");
 
     $oReturn->script("
         Swal.fire({
