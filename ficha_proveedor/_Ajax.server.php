@@ -7140,6 +7140,53 @@ function usaValidacionUAFE($idempresa, $oCon)
     return valorLogicoActivado($valor);
 }
 
+function proveedorCumpleUafe($idempresa, $id_clpv, $oCon)
+{
+    if (!$id_clpv) {
+        return false;
+    }
+
+    $sqlRequeridos = "
+        SELECT COUNT(*) AS total
+        FROM comercial.archivos_uafe
+        WHERE empr_cod_empr = $idempresa
+          AND estado = 'AC'
+    ";
+
+    $sqlEntregados = "
+        SELECT COUNT(*) AS total
+        FROM comercial.archivos_uafe au
+        JOIN comercial.adjuntos_clpv ac
+          ON ac.id_archivo_uafe = au.id
+         AND ac.id_clpv = $id_clpv
+         AND ac.id_empresa = $idempresa
+         AND ac.estado = 'AC'
+        WHERE au.empr_cod_empr = $idempresa
+          AND au.estado = 'AC'
+          AND (ac.fecha_entrega IS NULL OR ac.fecha_entrega::date >= CURRENT_DATE)
+    ";
+
+    $sqlPendientes = "
+        SELECT COUNT(*) AS total
+        FROM comercial.adjuntos_clpv
+        WHERE id_clpv = $id_clpv
+          AND id_empresa = $idempresa
+          AND id_archivo_uafe IS NOT NULL
+          AND estado <> 'AC'
+          AND estado <> 'AN'
+    ";
+
+    $totalRequeridos = intval(consulta_string($sqlRequeridos, 'total', $oCon, 0));
+    $totalEntregados = intval(consulta_string($sqlEntregados, 'total', $oCon, 0));
+    $tienePendientes = intval(consulta_string($sqlPendientes, 'total', $oCon, 0)) > 0;
+
+    if ($totalRequeridos === 0) {
+        return false;
+    }
+
+    return !$tienePendientes && $totalEntregados >= $totalRequeridos;
+}
+
 function marcarAdjuntosUafeVencidos($idempresa, $id_clpv, $oCon)
 {
     $sql = "
@@ -7285,57 +7332,15 @@ function obtenerEstadoProveedorInformix($idempresa, $id_clpv)
 
 function debeBloquearEstadoPorUafe($idempresa, $id_clpv, $oCon)
 {
-    if (!$id_clpv) {
-        return false;
-    }
-
     if (!usaValidacionUAFE($idempresa, $oCon)) {
         return false;
     }
 
-    // Primero, marcar como pendientes los documentos vencidos
-    marcarAdjuntosUafeVencidos($idempresa, $id_clpv, $oCon);
-
-    $sqlRequeridos = "
-        SELECT COUNT(*) AS total
-        FROM comercial.archivos_uafe
-        WHERE empr_cod_empr = $idempresa
-          AND estado = 'AC'
-    ";
-
-    $sqlEntregados = "
-        SELECT COUNT(*) AS total
-        FROM comercial.archivos_uafe au
-        JOIN comercial.adjuntos_clpv ac
-          ON ac.id_archivo_uafe = au.id
-         AND ac.id_clpv = $id_clpv
-         AND ac.id_empresa = $idempresa
-         AND ac.estado = 'AC'
-        WHERE au.empr_cod_empr = $idempresa
-          AND au.estado = 'AC'
-          AND (ac.fecha_entrega IS NULL OR ac.fecha_entrega::date >= CURRENT_DATE)
-    ";
-
-    $totalRequeridos = intval(consulta_string($sqlRequeridos, 'total', $oCon, 0));
-    $totalEntregados = intval(consulta_string($sqlEntregados, 'total', $oCon, 0));
-
-    $sqlPendientes = "
-        SELECT COUNT(*) AS total
-        FROM comercial.adjuntos_clpv
-        WHERE id_clpv = $id_clpv
-          AND id_empresa = $idempresa
-          AND id_archivo_uafe IS NOT NULL
-          AND estado <> 'AC'
-          AND estado <> 'AN'
-    ";
-
-    $tienePendientes = intval(consulta_string($sqlPendientes, 'total', $oCon, 0)) > 0;
-
-    if ($totalRequeridos === 0) {
-        return false;
+    if (!$id_clpv) {
+        return true;
     }
 
-    return $tienePendientes || $totalEntregados < $totalRequeridos;
+    return !proveedorCumpleUafe($idempresa, $id_clpv, $oCon);
 }
 
 function validarEstadoUAFEProveedor($id_clpv)
@@ -7356,7 +7361,8 @@ function validarEstadoUAFEProveedor($id_clpv)
     $oCon->Conectar();
 
     $usaUafe = usaValidacionUAFE($idempresa, $oCon);
-    $bloquear = $usaUafe ? debeBloquearEstadoPorUafe($idempresa, $id_clpv, $oCon) : false;
+    $cumple  = proveedorCumpleUafe($idempresa, $id_clpv, $oCon);
+    $bloquear = $usaUafe ? !$cumple : false;
 
     // Solo manejar la UI; no alterar estado al momento de editar
     $oReturn->script("habilitarEstadoProveedor(" . ($bloquear ? 'true' : 'false') . ");");
@@ -8028,6 +8034,8 @@ function guardarAdjuntosUAFE($id_clpv)
     $oCon->DSN = $DSN;
     $oCon->Conectar();
 
+    $usaUafe = usaValidacionUAFE($idempresa, $oCon);
+
     try {
 
         $oCon->QueryT("BEGIN;");
@@ -8043,7 +8051,8 @@ function guardarAdjuntosUAFE($id_clpv)
 
     unset($_SESSION['uafeCambios'][$id_clpv]);
 
-    $bloquear = debeBloquearEstadoPorUafe($idempresa, $id_clpv, $oCon);
+    $cumple = proveedorCumpleUafe($idempresa, $id_clpv, $oCon);
+    $bloquear = $usaUafe ? !$cumple : false;
     sincronizarEstadoProveedorPorUafe($idempresa, $id_clpv, $bloquear);
 
     $oReturn->script("habilitarEstadoProveedor(" . ($bloquear ? 'true' : 'false') . ");");
@@ -8054,21 +8063,24 @@ function guardarAdjuntosUAFE($id_clpv)
     }
     $oReturn->script("editar('$estadoVisual');");
 
-    if ($bloquear) {
-        $oReturn->script("Swal.fire({
-            icon: 'warning',
-            title: 'Documentos incompletos',
-            text: 'Faltan documentos UAFE por cumplir o vigentes.',
-            confirmButtonText: 'Aceptar'
-        });");
-    } else {
-        $oReturn->script("Swal.fire({
-            icon: 'success',
-            title: 'Guardar Documentos UAFE del Proveedor',
-            text: 'Todos los documentos están cumplidos. Estado del proveedor cambiará a ACTIVO.',
-            confirmButtonText: 'Aceptar'
-        });");
-    }
+    $mensaje = $bloquear
+        ? array(
+            'icon'  => 'warning',
+            'title' => 'Documentos incompletos',
+            'text'  => 'Faltan documentos UAFE por cumplir o vigentes.',
+        )
+        : array(
+            'icon'  => 'success',
+            'title' => 'Documentos UAFE actualizados',
+            'text'  => 'Este proveedor tiene los documentos UAFE entregados y vigentes.',
+        );
+
+    $oReturn->script("Swal.fire({
+        icon: '{$mensaje['icon']}',
+        title: '{$mensaje['title']}',
+        text: '{$mensaje['text']}',
+        confirmButtonText: 'Aceptar'
+    });");
 
     $oReturn->script("consultarAdjuntosUafe();");
 

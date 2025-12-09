@@ -294,6 +294,9 @@ if (isset($_REQUEST['codpedi'])) {
                     if (select.options[j].value == candidato) {
                         select.value = candidato;
                         $(select).trigger('change');
+                        if (typeof $(select).trigger === 'function') {
+                            $(select).trigger('chosen:updated');
+                        }
                         return;
                     }
                 }
