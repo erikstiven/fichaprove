@@ -7675,7 +7675,7 @@ function consultarAdjuntos($aForm = '')
     $idsucursal = $_SESSION['U_SUCURSAL'];
 
     //variables de formulario
-    $cliente  = $aForm['codigoCliente'];
+    $cliente  = isset($aForm['codigoCliente']) ? intval($aForm['codigoCliente']) : 0;
 
     try {
 
@@ -7691,51 +7691,57 @@ function consultarAdjuntos($aForm = '')
         $sHtml .= '<td></td>';
         $sHtml .= '</tr>';
 
-        // SOLO DOCUMENTOS NORMALES (NO UAFE)
-        $sql = "
-            SELECT id, titulo, ruta
-            FROM comercial.adjuntos_clpv
-            WHERE id_clpv   = $cliente 
-              AND id_empresa = $idempresa
-              AND (id_archivo_uafe = 0 OR id_archivo_uafe IS NULL)
-            ORDER BY id DESC;
-        ";
+        if ($cliente > 0) {
+            // SOLO DOCUMENTOS NORMALES (NO UAFE)
+            $sql = "
+                SELECT id, titulo, ruta
+                FROM comercial.adjuntos_clpv
+                WHERE id_clpv   = $cliente
+                  AND id_empresa = $idempresa
+                  AND (id_archivo_uafe = 0 OR id_archivo_uafe IS NULL)
+                ORDER BY id DESC;
+            ";
 
-        if ($oCon->Query($sql)) {
-            if ($oCon->NumFilas() > 0) {
-                $i = 1;
-                do {
-                    $id     = $oCon->f('id');
-                    $titulo = $oCon->f('titulo');
-                    $ruta   = $oCon->f('ruta');
+            if ($oCon->Query($sql)) {
+                if ($oCon->NumFilas() > 0) {
+                    $i = 1;
+                    do {
+                        $id     = $oCon->f('id');
+                        $titulo = $oCon->f('titulo');
+                        $ruta   = $oCon->f('ruta');
 
-                    // Normaliza la ruta (por si viene con ../)
-                    $ruta = str_replace('../', '', $ruta);
-                    $ruta_file = "../../Include/Clases/Formulario/Plugins/reloj/$ruta";
+                        // Normaliza la ruta (por si viene con ../)
+                        $ruta = str_replace('../', '', $ruta);
+                        $ruta_file = "../../Include/Clases/Formulario/Plugins/reloj/$ruta";
 
-                    $sHtml .= '<tr>';
-                    $sHtml .= '<td>' . $i++ . '</td>';
-                    $sHtml .= '<td>' . $titulo . '</td>';
-                    $sHtml .= ' <td>
-                                    <a href="' . $ruta_file . '" target="_blank" class="btn btn-link btn-sm">
-                                        Ver archivo
-                                    </a>
-                                </td>';
+                        $sHtml .= '<tr>';
+                        $sHtml .= '<td>' . $i++ . '</td>';
+                        $sHtml .= '<td>' . $titulo . '</td>';
+                        $sHtml .= ' <td>
+                                        <a href="' . $ruta_file . '" target="_blank" class="btn btn-link btn-sm">
+                                            Ver archivo
+                                        </a>
+                                    </td>';
 
-                
-                    $sHtml .= ' <td style="text-align:center; vertical-align:middle;">
+
+                        $sHtml .= ' <td style="text-align:center; vertical-align:middle;">
                                         <div class="btn btn-danger btn-sm" onclick="javascript:eliminar_adj(' . $id . ');">
                                             <span class="glyphicon glyphicon-remove"></span>
                                         </div>
                                 </td>';
+                        $sHtml .= '</tr>';
+                    } while ($oCon->SiguienteRegistro());
+                } else {
+                    // Sin registros
+                    $sHtml .= '<tr>';
+                    $sHtml .= '<td colspan="4" align="center"><em>No existen adjuntos registrados.</em></td>';
                     $sHtml .= '</tr>';
-                } while ($oCon->SiguienteRegistro());
-            } else {
-                // Sin registros
-                $sHtml .= '<tr>';
-                $sHtml .= '<td colspan="4" align="center"><em>No existen adjuntos registrados.</em></td>';
-                $sHtml .= '</tr>';
+                }
             }
+        } else {
+            $sHtml .= '<tr>';
+            $sHtml .= '<td colspan="4" align="center"><em>Seleccione un proveedor para consultar sus adjuntos.</em></td>';
+            $sHtml .= '</tr>';
         }
 
         $oCon->Free();
@@ -7760,10 +7766,14 @@ function consultarAdjuntosUafe($aForm = '')
     $oReturn = new xajaxResponse();
 
     $idempresa = $_SESSION['U_EMPRESA'];
-    $id_clpv   = intval($aForm['codigoCliente']);
+    $id_clpv   = isset($aForm['codigoCliente']) ? intval($aForm['codigoCliente']) : 0;
 
     if ($id_clpv <= 0) {
-        $oReturn->alert("Seleccione un proveedor válido.");
+        $html  = "<table class='table table-bordered table-hover' style='width:98%;'>";
+        $html .= "<tr><td colspan='8' align='center'><em>Seleccione un proveedor para consultar los documentos UAFE.</em></td></tr>";
+        $html .= "</table>";
+
+        $oReturn->assign("divReporteAdjuntosUafe", "innerHTML", $html);
         return $oReturn;
     }
 
