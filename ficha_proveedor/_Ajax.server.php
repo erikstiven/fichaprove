@@ -2211,7 +2211,8 @@ function verifica_tipo_mapa($latitud = 0, $longitud = 0, $aForm = '')
         $oReturn->assign('cod_cuenta_in', 'value', $clpv_cod_cuen);
         $valorIdentificacion = trim($clv_con_clpv);
         $valorIdentificacionPadded = str_pad($valorIdentificacion, 2, '0', STR_PAD_LEFT);
-        $oReturn->assign('identificacion', 'value', $valorIdentificacion);
+        // Preferir el valor rellenado para coincidir con las opciones del combo
+        $oReturn->assign('identificacion', 'value', $valorIdentificacionPadded);
         $oReturn->assign('ruc_cli', 'value', $clpv_ruc_clpv);
         $oReturn->assign('nombre', 'value', $clpv_nom_clpv);
         $oReturn->assign('nombre_comercial', 'value', $clpv_nom_come);
@@ -7356,8 +7357,10 @@ function validarEstadoUAFEProveedor($id_clpv)
     $oCon->DSN = $DSN;
     $oCon->Conectar();
 
-    $bloquear = debeBloquearEstadoPorUafe($idempresa, $id_clpv, $oCon);
-    sincronizarEstadoProveedorPorUafe($idempresa, $id_clpv, $bloquear);
+    $usaUafe = usaValidacionUAFE($idempresa, $oCon);
+    $bloquear = $usaUafe ? debeBloquearEstadoPorUafe($idempresa, $id_clpv, $oCon) : false;
+
+    // Solo manejar la UI; no alterar estado al momento de editar
     $oReturn->script("habilitarEstadoProveedor(" . ($bloquear ? 'true' : 'false') . ");");
 
     $estadoVisual = obtenerEstadoProveedorInformix($idempresa, $id_clpv);
