@@ -2519,15 +2519,15 @@ function seleccionaItem($aForm = '', $cliente = 0)
         // -----------------------------------------------------------
         //Marcar estado del proveedor (A, S, P)
         if (!empty($clpv_est_clpv)) {
-
-            if ($clpv_est_clpv == 'A') $clpv_est_clpv = 'AC';
-            if ($clpv_est_clpv == 'S') $clpv_est_clpv = 'SU';
-            if ($clpv_est_clpv == 'P') $clpv_est_clpv = 'PE';
+            if ($clpv_est_clpv == 'A') {
+                $clpv_est_clpv = 'AC';
+            } elseif ($clpv_est_clpv == 'S') {
+                $clpv_est_clpv = 'SU';
+            } elseif ($clpv_est_clpv == 'P') {
+                $clpv_est_clpv = 'PE';
+            }
 
             $oReturn->script('editar("' . $clpv_est_clpv . '")');
-
-        } else {
-            $oReturn->script('editar("PE")');
         }
 
         //AHORA VALIDAR UAFE (bloquea o habilita radios según documentos)

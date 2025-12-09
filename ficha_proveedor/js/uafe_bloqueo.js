@@ -10,11 +10,6 @@ function setParametroUafe(valor) {
 function habilitarEstadoProveedor(bloquear) {
     const radios = document.querySelectorAll('input[name="estado"]');
     radios.forEach(r => r.disabled = bloquear);
-
-    if (bloquear) {
-        const pe = document.getElementById("PE");
-        if (pe) pe.checked = true;
-    }
 }
 
 function habilitarCumplimientoUafe(habilitar) {
