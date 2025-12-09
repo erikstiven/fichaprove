@@ -16,6 +16,35 @@ if (isset($_REQUEST['codpedi'])) {
 } else {
     $codpedi = 0;
 }
+
+if (!function_exists('normalizarBanderaUafe')) {
+    function normalizarBanderaUafe($valor)
+    {
+        if (is_bool($valor)) {
+            return $valor ? 't' : 'f';
+        }
+
+        $valor = strtolower(trim((string) $valor));
+        return ($valor === 't' || $valor === 'true' || $valor === '1') ? 't' : 'f';
+    }
+}
+
+if (session_status() !== PHP_SESSION_ACTIVE) {
+    session_start();
+}
+
+$usaUAFE = 'f';
+if (isset($_SESSION['U_EMPRESA'])) {
+    $idempresa = $_SESSION['U_EMPRESA'];
+
+    $oConTmp = new Dbo;
+    $oConTmp->DSN = $DSN;
+    $oConTmp->Conectar();
+
+    $sqlUafeFlag = "SELECT emmpr_uafe_cprov FROM saeempr WHERE empr_cod_empr = $idempresa;";
+    $valorUafe = consulta_string($sqlUafeFlag, 'emmpr_uafe_cprov', $oConTmp, 'f');
+    $usaUAFE = normalizarBanderaUafe($valorUafe);
+}
 ?>
 
 <? if ($ejecuta) { ?>
@@ -1543,11 +1572,8 @@ if (isset($_REQUEST['codpedi'])) {
     </script>
 
     <?php
-        if ($usaUAFE == 't') {
-            echo "<script> habilitarEstadoProveedor(true); </script>";
-        } else {
-            echo "<script> habilitarEstadoProveedor(false); </script>";
-        }
+        $usaUAFE_js = ($usaUAFE === 't') ? 't' : 'f';
+        echo "<script>var usaUAFE = '$usaUAFE_js'; if (usaUAFE === \"t\") { habilitarEstadoProveedor(true); } else { habilitarEstadoProveedor(false); }</script>";
     ?>
     <script src="js/google_maps.js"></script>
     <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyB8pAD65yn2Qtj_DTowH8xUUkUB6U_SRN0&callback=initMap"></script>

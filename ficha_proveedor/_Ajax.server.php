@@ -2,6 +2,18 @@
 
 require("_Ajax.comun.php"); // No modificar esta linea
 
+if (!function_exists('normalizarBanderaUafe')) {
+    function normalizarBanderaUafe($valor)
+    {
+        if (is_bool($valor)) {
+            return $valor ? 't' : 'f';
+        }
+
+        $valor = strtolower(trim((string) $valor));
+        return ($valor === 't' || $valor === 'true' || $valor === '1') ? 't' : 'f';
+    }
+}
+
 /* :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
   // S E R V I D O R   A J A X //
   :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: */
@@ -1126,10 +1138,11 @@ function genera_formulario_cliente($sAccion = 'nuevo', $aForm = '', $cod, $pedi)
             WHERE empr_cod_empr = $idempresa;
         ";
 
-        $usaUAFE = consulta_string($sqlUafeEmp, 'emmpr_uafe_cprov', $oCon, 'f');
+        $usaUAFE = normalizarBanderaUafe(consulta_string($sqlUafeEmp, 'emmpr_uafe_cprov', $oCon, 'f'));
         $oReturn->script("
             console.log('%cline 1: VALOR RAW DE usaUAFE = ' + JSON.stringify('$usaUAFE'), 'color:yellow;font-weight:bold');
         ");
+        $oReturn->script("window.usaUAFE = '$usaUAFE';");
 
         //------------------------------------------------------------------------------
         //  FIN VALIDACIÓN UAFE PARA HABILITAR/DESHABILITAR ESTADO
@@ -5466,12 +5479,12 @@ function guardar_cliente($cod, $aForm = '')
         from saeempr
         where empr_cod_empr = $idempresa
     ";
-    $usaUafe = consulta_string($sqlUafe, 'emmpr_uafe_cprov', $oIfx, 'N');
+    $usaUafe = normalizarBanderaUafe(consulta_string($sqlUafe, 'emmpr_uafe_cprov', $oIfx, 'N'));
     //echo $sqlUafe; exit;
 
     // Si el campo de la empresa está en S = activar UAFE
   
-    if ($usaUafe == 't' || $usaUafe == 'true' || $usaUafe == '1' || $usaUafe == 1) {
+    if ($usaUafe === 't') {
         $estado = 'P';
     }
     //echo $estado; exit;
@@ -5636,9 +5649,9 @@ function guardar_cliente($cod, $aForm = '')
                     //----------------------------------------------------------
                     // ENVIAR CORREO AUTOMÁTICO UAFE
                     //----------------------------------------------------------
-                    $usaUafe = strtolower(trim($usaUafe));
+                    $usaUafe = normalizarBanderaUafe($usaUafe);
 
-                    $esEmpresaUafe = ($usaUafe === 't' || $usaUafe === 'true' || $usaUafe === '1' || $usaUafe == 1);
+                    $esEmpresaUafe = ($usaUafe === 't');
 
                     if ($esEmpresaUafe && !empty($correo_contacto)) {
                         $oReturn->script("xajax_enviaEmail(xajax.getFormValues('form1'), '$correo_contacto');");
@@ -7203,7 +7216,9 @@ function validarEstadoUAFEProveedor($id_clpv)
         WHERE empr_cod_empr = $idempresa
     ";
 
-    $usaUAFE = consulta_string($sqlUafe, 'emmpr_uafe_cprov', $oCon, 'f');
+    $usaUAFE = normalizarBanderaUafe(consulta_string($sqlUafe, 'emmpr_uafe_cprov', $oCon, 'f'));
+
+    $oReturn->script("window.usaUAFE = '$usaUAFE';");
 
     if ($usaUAFE != 't') {
         // UAFE deshabilitado - radios siempre habilitados
@@ -7997,7 +8012,7 @@ function guardarAdjuntosUAFE($id_clpv)
         FROM saeempr
         WHERE empr_cod_empr = $idempresa
     ";
-    $usaUafe = consulta_string($sqlParam, 'emmpr_uafe_cprov', $oCon, 'f');
+    $usaUafe = normalizarBanderaUafe(consulta_string($sqlParam, 'emmpr_uafe_cprov', $oCon, 'f'));
     $usaValidacion = ($usaUafe === 't');
 
     // Catálogo de documentos UAFE
