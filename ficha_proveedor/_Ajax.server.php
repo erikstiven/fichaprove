@@ -2,6 +2,35 @@
 
 require("_Ajax.comun.php"); // No modificar esta linea
 
+// -------------------------------------------------------------
+// HELPER UAFE: valida si la empresa usa control de proveedores
+// -------------------------------------------------------------
+function empresaUsaUAFEProveedor($idempresa = null)
+{
+    global $DSN_Ifx;
+
+    if (session_status() !== PHP_SESSION_ACTIVE) {
+        session_start();
+    }
+
+    if ($idempresa === null) {
+        $idempresa = isset($_SESSION['U_EMPRESA']) ? $_SESSION['U_EMPRESA'] : 0;
+    }
+
+    if (empty($idempresa)) {
+        return false;
+    }
+
+    $oEmpr = new Dbo();
+    $oEmpr->DSN = $DSN_Ifx;
+    $oEmpr->Conectar();
+
+    $sqlUafeEmp = "SELECT 1 AS usa FROM saeempr WHERE empr_cod_empr = $idempresa AND emmpr_uafe_cprov = 't'";
+    $usaUAFE = consulta_string_func($sqlUafeEmp, 'usa', $oEmpr, '');
+
+    return $usaUAFE === '1';
+}
+
 /* :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
   // S E R V I D O R   A J A X //
   :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: */
@@ -1126,16 +1155,7 @@ function genera_formulario_cliente($sAccion = 'nuevo', $aForm = '', $cod, $pedi)
         //------------------------------------------------------------------------------
 
         // Consultar si la empresa usa validación UAFE
-        $sqlUafeEmp = "
-            SELECT emmpr_uafe_cprov
-            FROM saeempr
-            WHERE empr_cod_empr = $idempresa;
-        ";
-
-        $usaUAFE = consulta_string($sqlUafeEmp, 'emmpr_uafe_cprov', $oCon, 'f');
-        $oReturn->script("
-            console.log('%cline 1: VALOR RAW DE usaUAFE = ' + JSON.stringify('$usaUAFE'), 'color:yellow;font-weight:bold');
-        ");
+        $usaUAFE = empresaUsaUAFEProveedor($idempresa) ? 't' : 'f';
 
         //------------------------------------------------------------------------------
         //  FIN VALIDACIÓN UAFE PARA HABILITAR/DESHABILITAR ESTADO
@@ -2408,13 +2428,7 @@ function seleccionaItem($aForm = '', $cliente = 0)
     $idsucursal = $_SESSION['U_SUCURSAL'];
 
     try {
-        $sqlUafeEmp = "
-            SELECT emmpr_uafe_cprov
-            FROM saeempr
-            WHERE empr_cod_empr = $idempresa;
-        ";
-
-        $usaUAFE = consulta_string_func($sqlUafeEmp, 'emmpr_uafe_cprov', $oIfx, 'f');
+        $usaUAFE = empresaUsaUAFEProveedor($idempresa) ? 't' : 'f';
 
         $sql = "select clpv_cod_clpv, clv_con_clpv, clpv_nom_clpv, clpv_cod_char,
                                 clpv_ruc_clpv, clpv_nom_come, grpv_cod_grpv, clpv_cod_zona,
@@ -7303,13 +7317,7 @@ function validarEstadoUAFEProveedor($id_clpv)
     //----------------------------------------------------------
     // 1. VERIFICAR SI LA EMPRESA USA VALIDACIÓN UAFE
     //----------------------------------------------------------
-    $sqlUafe = "
-        SELECT emmpr_uafe_cprov
-        FROM saeempr
-        WHERE empr_cod_empr = $idempresa
-    ";
-
-    $usaUAFE = consulta_string($sqlUafe, 'emmpr_uafe_cprov', $oCon, 'f');
+    $usaUAFE = empresaUsaUAFEProveedor($idempresa) ? 't' : 'f';
 
     if ($usaUAFE != 't') {
         // Empresa no usa UAFE: radios y checkboxes habilitados, sin validación
