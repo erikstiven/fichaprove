@@ -2408,6 +2408,14 @@ function seleccionaItem($aForm = '', $cliente = 0)
     $idsucursal = $_SESSION['U_SUCURSAL'];
 
     try {
+        $sqlUafeEmp = "
+            SELECT emmpr_uafe_cprov
+            FROM saeempr
+            WHERE empr_cod_empr = $idempresa;
+        ";
+
+        $usaUAFE = consulta_string_func($sqlUafeEmp, 'emmpr_uafe_cprov', $oIfx, 'f');
+
         $sql = "select clpv_cod_clpv, clv_con_clpv, clpv_nom_clpv, clpv_cod_char,
                                 clpv_ruc_clpv, clpv_nom_come, grpv_cod_grpv, clpv_cod_zona,
                                 clpv_cod_fpag, clpv_cod_sucu, clpv_pre_ven, clpv_cod_vend,
@@ -2634,10 +2642,18 @@ function seleccionaItem($aForm = '', $cliente = 0)
         $oReturn->script('xajax_reportePlantillas(xajax.getFormValues(\'form1\'))');
 
         if ($cliente > 0) {
+            if ($usaUAFE === 't') {
+                // VALIDAR ESTADO UAFE DEL PROVEEDOR DESPUÉS DE CARGAR DATOS
+                $oReturn->script("xajax_validarEstadoUAFEProveedor($cliente);");
+            } else {
+                // Empresa sin UAFE: asegurar controles habilitados
+                $oReturn->script('habilitarEstadoProveedor(false);');
+                $oReturn->script('bloquearCheckboxesUAFE(false);');
+            }
+
+            // Cargar tablas de adjuntos siempre al final
             $oReturn->script('consultarAdjuntos();');
             $oReturn->script('consultarAdjuntosUafe();');
-            // VALIDAR ESTADO UAFE DEL PROVEEDOR DESPUÉS DE CARGAR DATOS
-            $oReturn->script("xajax_validarEstadoUAFEProveedor($cliente);");
         }
 
     } catch (Exception $e) {

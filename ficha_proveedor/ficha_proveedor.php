@@ -908,10 +908,10 @@ if (isset($_REQUEST['codpedi'])) {
 
         // Consultar documentos UAFE del proveedor seleccionado
         function consultarAdjuntosUafe() {
-            console.log("CLICK: ejecutar UAFE");
-            console.log("Cliente =", $("#codigoCliente").val());
-
-            xajax_consultarAdjuntosUafe(xajax.getFormValues("form1"));
+            var cliente = $("#codigoCliente").val();
+            if (cliente && cliente !== '') {
+                xajax_consultarAdjuntosUafe(xajax.getFormValues("form1"));
+            }
         }
 
         function dowloand(ruta) {
