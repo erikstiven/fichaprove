@@ -7167,7 +7167,7 @@ function debeBloquearEstadoPorUafe($idempresa, $id_clpv, $oCon)
     }
 
     $sql = "
-        SELECT estado, fecha_vencimiento
+        SELECT estado, fecha_entrega
         FROM comercial.adjuntos_clpv
         WHERE id_clpv = $id_clpv
           AND id_empresa = $idempresa
@@ -7182,7 +7182,7 @@ function debeBloquearEstadoPorUafe($idempresa, $id_clpv, $oCon)
     if ($oCon->Query($sql) && $oCon->NumFilas() > 0) {
         do {
             $estado = trim($oCon->f('estado'));
-            $venc = $oCon->f('fecha_vencimiento');
+            $venc = $oCon->f('fecha_entrega');
 
             if ($estado !== 'AC') {
                 $todosAprobados = false;
