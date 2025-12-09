@@ -2499,6 +2499,7 @@ function seleccionaItem($aForm = '', $cliente = 0)
             $oReturn->assign('dsctDetalle', 'value', $clpv_dsc_prpg);
             $oReturn->assign('tipo_cliente', 'value', $clpv_cod_cact);
             $oReturn->assign('tipo_prove', 'value', $clpv_cod_tprov);
+            $oReturn->script("$('#tipo_prove').val('" . $clpv_cod_tprov . "');");
             $oReturn->assign('tipo_pago', 'value', $clpv_cod_tpago);
             $oReturn->assign('pago', 'value', $clpv_cod_fpagop);
             $oReturn->assign('pais', 'value', $clpv_cod_paisp);
@@ -7538,10 +7539,9 @@ function cambiarEstadoUafe($id_uafe, $id_clpv, $valor) {
     $id_clpv = intval($id_clpv);
     $id_uafe = intval($id_uafe);
 
-    $oReturn = new xajaxResponse();
-
     if ($id_clpv <= 0 || $id_uafe <= 0) {
         // No proveedor o documento válido: solo repintar vista vacía
+        $oReturn = new xajaxResponse();
         $oReturn->script("consultarAdjuntosUafe();");
         return $oReturn;
     }
@@ -7913,21 +7913,8 @@ function guardarAdjuntosUAFE($aForm = '')
     $id_clpv    = isset($aForm['codigoCliente']) ? intval($aForm['codigoCliente']) : 0;
 
     if ($id_clpv <= 0) {
-        $oReturn->alert('Seleccione un proveedor antes de guardar los documentos UAFE.');
+        $oReturn->script("Swal.fire({icon:'warning',title:'Proveedor requerido',text:'Seleccione un proveedor para guardar los documentos UAFE.',confirmButtonText:'Aceptar'});");
         return $oReturn;
-    }
-
-    $seleccionados = array();
-    if (isset($aForm['cumplimiento']) && is_array($aForm['cumplimiento'])) {
-        foreach ($aForm['cumplimiento'] as $idDoc => $val) {
-            $seleccionados[intval($idDoc)] = 'AC';
-        }
-    }
-
-    if (isset($_SESSION['adjuntosUafeTmp'][$id_clpv]) && is_array($_SESSION['adjuntosUafeTmp'][$id_clpv])) {
-        foreach ($_SESSION['adjuntosUafeTmp'][$id_clpv] as $idDoc => $estadoTmp) {
-            $seleccionados[intval($idDoc)] = ($estadoTmp === 'AC') ? 'AC' : 'PE';
-        }
     }
 
     $oCon = new Dbo();
@@ -7956,7 +7943,27 @@ function guardarAdjuntosUAFE($aForm = '')
         $oReturn->script("consultarAdjuntosUafe();");
         $oReturn->script("habilitarEstadoProveedor(false);");
         $oReturn->script("habilitarCumplimientoUafe(true);");
+        $oReturn->script("Swal.fire({icon:'info',title:'Sin documentos UAFE',text:'No existen documentos UAFE configurados para esta empresa.',confirmButtonText:'Aceptar'});");
         return $oReturn;
+    }
+
+    // Estados seleccionados desde el formulario (checkboxes marcados = AC)
+    $seleccionados = array();
+    foreach ($catalogo as $idDoc => $tituloDoc) {
+        $seleccionados[intval($idDoc)] = 'PE';
+    }
+
+    if (isset($aForm['cumplimiento']) && is_array($aForm['cumplimiento'])) {
+        foreach ($aForm['cumplimiento'] as $idDoc => $val) {
+            $seleccionados[intval($idDoc)] = 'AC';
+        }
+    }
+
+    // Estados temporales en sesión tienen prioridad sobre el formulario
+    if (isset($_SESSION['adjuntosUafeTmp'][$id_clpv]) && is_array($_SESSION['adjuntosUafeTmp'][$id_clpv])) {
+        foreach ($_SESSION['adjuntosUafeTmp'][$id_clpv] as $idDoc => $estadoTmp) {
+            $seleccionados[intval($idDoc)] = ($estadoTmp === 'AC') ? 'AC' : 'PE';
+        }
     }
 
     $existentes = array();
@@ -7983,26 +7990,42 @@ function guardarAdjuntosUAFE($aForm = '')
         } while ($oCon->SiguienteRegistro());
     }
 
+    $huboCambios = false;
+
     try {
         $oCon->QueryT("BEGIN;");
 
         foreach ($catalogo as $idDoc => $tituloDoc) {
-            $estadoFinal = isset($seleccionados[$idDoc]) ? $seleccionados[$idDoc] : 'PE';
+            // Estado final según selección temporal, formulario o BD existente
+            if (isset($seleccionados[$idDoc])) {
+                $estadoFinal = $seleccionados[$idDoc];
+            } elseif (isset($existentes[$idDoc])) {
+                $estadoFinal = $existentes[$idDoc]['estado'];
+            } else {
+                $estadoFinal = 'PE';
+            }
+
             $fechaEntrega = ($estadoFinal === 'AC') ? "CURRENT_DATE" : "NULL";
 
             if (isset($existentes[$idDoc])) {
                 $idAdj = $existentes[$idDoc]['id'];
-                $sqlUpd = "
-                    UPDATE comercial.adjuntos_clpv
-                    SET estado = '$estadoFinal',
-                        fecha_entrega = $fechaEntrega
-                    WHERE id = $idAdj
-                      AND id_clpv = $id_clpv
-                      AND id_empresa = $idempresa
-                      AND id_sucursal = $idsucursal;
-                ";
-                $oCon->QueryT($sqlUpd);
+                $estadoActual = $existentes[$idDoc]['estado'];
+
+                if ($estadoActual !== $estadoFinal) {
+                    $huboCambios = true;
+                    $sqlUpd = "
+                        UPDATE comercial.adjuntos_clpv
+                        SET estado = '$estadoFinal',
+                            fecha_entrega = $fechaEntrega
+                        WHERE id = $idAdj
+                          AND id_clpv = $id_clpv
+                          AND id_empresa = $idempresa
+                          AND id_sucursal = $idsucursal;
+                    ";
+                    $oCon->QueryT($sqlUpd);
+                }
             } else {
+                $huboCambios = true;
                 $sqlIns = "
                     INSERT INTO comercial.adjuntos_clpv
                         (id_empresa, id_sucursal, id_clpv, id_archivo_uafe, titulo, ruta, estado, fecha_entrega)
@@ -8016,7 +8039,7 @@ function guardarAdjuntosUAFE($aForm = '')
         $oCon->QueryT("COMMIT;");
     } catch (Exception $e) {
         $oCon->QueryT("ROLLBACK;");
-        $oReturn->alert($e->getMessage());
+        $oReturn->script("Swal.fire({icon:'error',title:'Error al guardar',text:'" . addslashes($e->getMessage()) . "',confirmButtonText:'Aceptar'});");
         return $oReturn;
     }
 
@@ -8024,13 +8047,26 @@ function guardarAdjuntosUAFE($aForm = '')
 
     $oReturn->script("consultarAdjuntosUafe();");
 
+    $textoModal = $huboCambios
+        ? 'Los documentos UAFE se actualizaron correctamente.'
+        : 'No se registraron cambios en documentos UAFE.';
+    $iconoModal = $huboCambios ? 'success' : 'info';
+
     if ($usaValidacion) {
         if (proveedorCumpleUafe($idempresa, $idsucursal, $id_clpv, $oCon)) {
             $oReturn->script("habilitarEstadoProveedor(false);");
             $oReturn->script("habilitarCumplimientoUafe(true);");
+            $textoModal = $huboCambios
+                ? 'Documentos UAFE actualizados correctamente. El proveedor ya cumple con los requisitos.'
+                : 'El proveedor ya cumple con los requisitos UAFE.';
+            $iconoModal = 'success';
         } else {
             $oReturn->script("habilitarEstadoProveedor(true);");
             $oReturn->script("habilitarCumplimientoUafe(false);");
+            $textoModal = $huboCambios
+                ? 'Faltan documentos UAFE por completar. El proveedor no cumple con los requisitos.'
+                : 'No se registraron cambios en documentos UAFE. El proveedor no cumple con los requisitos.';
+            $iconoModal = $huboCambios ? 'warning' : 'info';
         }
     } else {
         $oReturn->script("habilitarEstadoProveedor(false);");
@@ -8039,18 +8075,10 @@ function guardarAdjuntosUAFE($aForm = '')
 
     $oReturn->script("xajax_validarEstadoUAFEProveedor($id_clpv);");
 
-    $oReturn->script("
-        Swal.fire({
-            icon: 'success',
-            title: 'Documentos UAFE guardados',
-            text: 'Se registraron los cambios de cumplimiento UAFE.',
-            confirmButtonText: 'Aceptar'
-        });
-    ");
+    $oReturn->script("Swal.fire({icon:'" . $iconoModal . "',title:'Documentos UAFE',text:'" . addslashes($textoModal) . "',confirmButtonText:'Aceptar'});");
 
     return $oReturn;
 }
-
 function eliminarArchivoUAFE($id_uafe, $id_clpv, $id_adj)
 {
     if (session_status() !== PHP_SESSION_ACTIVE) {
