@@ -1501,42 +1501,7 @@ function genera_formulario_cliente($sAccion = 'nuevo', $aForm = '', $cod, $pedi)
         $sHtml .= '</table>';
 
         $oReturn->assign("divFormularioCli", "innerHTML", $sHtml);
-        $oReturn->script("console.log('DEBUG: FORMULARIO GENERADO');");
-
-        $oReturn->script("console.log('ACCION REAL = [$sAccion]');");
-        $oReturn->script("console.log('usaUAFE = [$usaUAFE]');");
-
-
-        $oReturn->script("
-            console.log('%cline 2: Evaluando condicional…','color:cyan;font-weight:bold');
-            console.log('%c  sAccion: $sAccion','color:cyan');
-            console.log('%c  usaUAFE: $usaUAFE  (tipo: " . gettype($usaUAFE) . ")','color:cyan');
-            console.log('%c  Condicion (usaUAFE == \"t\"): ' + (" . ($usaUAFE == 't' ? 'true' : 'false') . "), 'color:cyan');
-        ");
-
-
-
-        if ($sAccion == 'nuevo' && $usaUAFE == 't') {
-
-            $oReturn->script("
-                console.log('%cline 3: ENTRÓ AL IF DE BLOQUEO', 'color:lime;font-weight:bold');
-            ");
-
-            $oReturn->script("
-                console.log('UAFE Nuevo: Bloqueando radios…');
-                setTimeout(function(){
-                    try {
-                        habilitarEstadoProveedor(true);
-                        console.log('%cBloqueo aplicado correctamente','color:orange;font-weight:bold');
-                    } catch(e){
-                        console.log('ERROR bloqueo nuevo:', e);
-                    }
-                }, 200);
-            ");
-
-        } else {
-            $oReturn->script("console.log('%cline 3: NO ENTRÓ AL IF (no se bloquea)', 'color:red;font-weight:bold');");
-        }
+        $oReturn->script("prepararEstadoUAFEInicial(" . ($usaUAFE == 't' ? 'true' : 'false') . ", " . ($sAccion == 'nuevo' ? 'true' : 'false') . ");");
 
 
 
@@ -2668,13 +2633,12 @@ function seleccionaItem($aForm = '', $cliente = 0)
         $oReturn->script('xajax_genera_formulario_portafolio(xajax.getFormValues(\'form1\'))');
         $oReturn->script('xajax_reportePlantillas(xajax.getFormValues(\'form1\'))');
 
-        $oReturn->script('consultarAdjuntos();');
-
-        // VALIDAR ESTADO UAFE DEL PROVEEDOR DESPUÉS DE CARGAR DATOS
-        $oReturn->script("xajax_validarEstadoUAFEProveedor($cliente);");
-
-        //MOSTRAR DOCUMENTOS UAFE DEL PROVEEDOR
-        $oReturn->script('consultarAdjuntosUafe();');
+        if ($cliente > 0) {
+            $oReturn->script('consultarAdjuntos();');
+            $oReturn->script('consultarAdjuntosUafe();');
+            // VALIDAR ESTADO UAFE DEL PROVEEDOR DESPUÉS DE CARGAR DATOS
+            $oReturn->script("xajax_validarEstadoUAFEProveedor($cliente);");
+        }
 
     } catch (Exception $e) {
         $oReturn->alert($e->getMessage());
@@ -7332,8 +7296,9 @@ function validarEstadoUAFEProveedor($id_clpv)
     $usaUAFE = consulta_string($sqlUafe, 'emmpr_uafe_cprov', $oCon, 'f');
 
     if ($usaUAFE != 't') {
-        // Empresa no usa UAFE: radios habilitados y sin validación
+        // Empresa no usa UAFE: radios y checkboxes habilitados, sin validación
         $oReturn->script("habilitarEstadoProveedor(false);");
+        $oReturn->script("bloquearCheckboxesUAFE(false);");
         return $oReturn;
     }
 
@@ -7357,6 +7322,7 @@ function validarEstadoUAFEProveedor($id_clpv)
     // Si no hay documentos configurados, habilitar radios
     if (count($requeridos) === 0) {
         $oReturn->script("habilitarEstadoProveedor(false);");
+        $oReturn->script("bloquearCheckboxesUAFE(false);");
         return $oReturn;
     }
 
@@ -7378,12 +7344,14 @@ function validarEstadoUAFEProveedor($id_clpv)
     $faltan = consulta_string($sqlFaltantes, 'faltantes', $oCon, 0);
 
     if ($faltan > 0) {
-        // Bloquear edición de estado si faltan documentos aprobados
+        // Bloquear edición de estado y checkboxes si faltan documentos aprobados
         $oReturn->script("habilitarEstadoProveedor(true);");
+        $oReturn->script("bloquearCheckboxesUAFE(true);");
         return $oReturn;
     }
 
     // Todos los documentos requeridos están en estado AC
+    $oReturn->script("bloquearCheckboxesUAFE(false);");
     $oReturn->script("habilitarEstadoProveedor(false);");
 
     return $oReturn;
@@ -7838,6 +7806,11 @@ function consultarAdjuntos($aForm = '')
     //variables de formulario
     $cliente  = $aForm['codigoCliente'];
 
+    if (empty($cliente)) {
+        $oReturn->assign('divReporteAdjuntos', 'innerHTML', '');
+        return $oReturn;
+    }
+
     try {
 
         $sHtml  = '';
@@ -7924,7 +7897,7 @@ function consultarAdjuntosUafe($aForm = '')
     $id_clpv   = intval($aForm['codigoCliente']);
 
     if ($id_clpv <= 0) {
-        $oReturn->alert("Seleccione un proveedor válido.");
+        $oReturn->assign('divReporteAdjuntosUafe', 'innerHTML', '');
         return $oReturn;
     }
 
@@ -8068,7 +8041,7 @@ function consultarAdjuntosUafe($aForm = '')
                     <td>$fecVenc</td>
                     <td>$estadoMostrar</td>
                     <td align='center'>
-                        <input type='checkbox' $checked
+                        <input type='checkbox' class='uafe-check' $checked
                             onclick=\"cambiarEstadoUafe($id_uafe, $id_clpv, this.checked)\">
                     </td>
                     <td align='center'>$btnEliminar</td>

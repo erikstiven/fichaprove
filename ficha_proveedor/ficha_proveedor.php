@@ -1548,11 +1548,9 @@ if (isset($_REQUEST['codpedi'])) {
     </script>
 
     <?php
-        if ($usaUAFE == 't') {
-            echo "<script> habilitarEstadoProveedor(true); </script>";
-        } else {
-            echo "<script> habilitarEstadoProveedor(false); </script>";
-        }
+        $usaUafeBool = ($usaUAFE == 't') ? 'true' : 'false';
+        $scriptInicial = "var elCod=document.getElementById('codigoCliente');var esNuevo=!elCod||elCod.value==='';prepararEstadoUAFEInicial($usaUafeBool, esNuevo);";
+        echo "<script>$scriptInicial</script>";
     ?>
     <script src="js/google_maps.js"></script>
     <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyB8pAD65yn2Qtj_DTowH8xUUkUB6U_SRN0&callback=initMap"></script>
