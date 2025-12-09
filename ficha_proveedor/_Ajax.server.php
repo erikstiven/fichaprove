@@ -2445,6 +2445,7 @@ function seleccionaItem($aForm = '', $cliente = 0)
             $clpv_nom_come = $oIfx->f('clpv_nom_come');
             $clv_con_clpv   = $oIfx->f('clv_con_clpv');
             $clpv_est_clpv  = $oIfx->f('clpv_est_clpv');
+            $clpv_cod_char  = $oIfx->f('clpv_cod_char');
 
             // Más campos...
             $clpv_cod_zona = $oIfx->f('clpv_cod_zona');
@@ -2490,6 +2491,7 @@ function seleccionaItem($aForm = '', $cliente = 0)
             $oReturn->assign('ruc_cli', 'value', $clpv_ruc_clpv);
             $oReturn->assign('nombre', 'value', $clpv_nom_clpv);
             $oReturn->assign('nombre_comercial', 'value', $clpv_nom_come);
+            $oReturn->assign('cod_char_clpv', 'value', $clpv_cod_char);
             $oReturn->assign('grupo', 'value', $grpv_cod_grpv);
             $oReturn->assign('clpv_cod_sucu', 'value', $clpv_cod_sucu);
             $oReturn->assign('zona', 'value', $clpv_cod_zona);
@@ -2499,7 +2501,7 @@ function seleccionaItem($aForm = '', $cliente = 0)
             $oReturn->assign('dsctDetalle', 'value', $clpv_dsc_prpg);
             $oReturn->assign('tipo_cliente', 'value', $clpv_cod_cact);
             $oReturn->assign('tipo_prove', 'value', $clpv_cod_tprov);
-            $oReturn->script("$('#tipo_prove').val('" . $clpv_cod_tprov . "');");
+            $oReturn->script("setTimeout(function(){ $('#tipo_prove').val('" . $clpv_cod_tprov . "'); }, 300);");
             $oReturn->assign('tipo_pago', 'value', $clpv_cod_tpago);
             $oReturn->assign('pago', 'value', $clpv_cod_fpagop);
             $oReturn->assign('pais', 'value', $clpv_cod_paisp);
