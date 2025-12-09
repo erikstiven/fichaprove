@@ -2015,7 +2015,7 @@ function verifica_tipo_mapa($latitud = 0, $longitud = 0, $aForm = '')
     return $oReturn;
 }
 
-/*function seleccionaItem($aForm = '', $cliente = 0)
+function seleccionaItem($aForm = '', $cliente = 0)
 {
 
     global $DSN_Ifx, $DSN;
@@ -2318,9 +2318,9 @@ function verifica_tipo_mapa($latitud = 0, $longitud = 0, $aForm = '')
     }
 
     return $oReturn;
-}*/
+}
 
-function seleccionaItem($aForm = '', $cliente = 0)
+/*function seleccionaItem($aForm = '', $cliente = 0)
 {
     global $DSN_Ifx, $DSN;
 
@@ -2498,7 +2498,7 @@ function seleccionaItem($aForm = '', $cliente = 0)
     }
 
     return $oReturn;
-}
+}*/
 
 
 function guardar_ubicacion_clpv($aForm = '')
