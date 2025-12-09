@@ -7197,7 +7197,7 @@ function validarEstadoUAFEProveedor($id_clpv)
 
     if ($usaUAFE != 't') {
         // UAFE deshabilitado - radios siempre habilitados
-        $oReturn->script("habilitarEstadoProveedor(true);");
+        $oReturn->script("habilitarEstadoProveedor(false);");
         return $oReturn;
     }
 
@@ -7251,18 +7251,18 @@ function validarEstadoUAFEProveedor($id_clpv)
 
     // Regla 1: Si algún documento está vencido → bloquear
     if ($hayVencidos) {
-        $oReturn->script("habilitarEstadoProveedor(false);");
+        $oReturn->script("habilitarEstadoProveedor(true);");
         return $oReturn;
     }
 
     // Regla 2: Si NO todos están AC → bloquear
     if (!$todosAprobados) {
-        $oReturn->script("habilitarEstadoProveedor(false);");
+        $oReturn->script("habilitarEstadoProveedor(true);");
         return $oReturn;
     }
 
     // Regla 3: Si todos aprobados (AC y no vencidos) → habilitar
-    $oReturn->script("habilitarEstadoProveedor(true);");
+    $oReturn->script("habilitarEstadoProveedor(false);");
 
     return $oReturn;
 }
@@ -8015,7 +8015,7 @@ function guardarAdjuntosUAFE($id_clpv)
     if (!$todosAC) {
 
         // BLOQUEAR RADIOS
-        $oReturn->script("habilitarEstadoProveedor(false);");
+        $oReturn->script("habilitarEstadoProveedor(true);");
 
         $oReturn->script("
             Swal.fire({
@@ -8040,7 +8040,7 @@ function guardarAdjuntosUAFE($id_clpv)
     $oCon->Query($sqlUpd);
 
     // HABILITAR RADIOS
-    $oReturn->script("habilitarEstadoProveedor(true);");
+    $oReturn->script("habilitarEstadoProveedor(false);");
 
     //CONFIRMACIÓN
     $oReturn->script("
