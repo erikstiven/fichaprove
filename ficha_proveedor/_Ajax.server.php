@@ -8073,6 +8073,35 @@ function guardarAdjuntosUAFE($aForm = '')
 
     $oReturn->script("consultarAdjuntosUafe();");
 
+    // Releer el estado del proveedor tras posibles cambios para sincronizar la interfaz
+    if ($cumpleDespues) {
+        $estadoActualProv = '';
+        $sqlEstadoReleer = "
+            SELECT clpv_est_clpv
+            FROM saeclpv
+            WHERE clpv_cod_clpv = $id_clpv
+              AND clpv_cod_empr = $idempresa
+              AND clpv_cod_sucu = $idsucursal
+            LIMIT 1;
+        ";
+
+        if ($oCon->Query($sqlEstadoReleer) && $oCon->NumFilas() > 0) {
+            $estadoActualProv = trim($oCon->f('clpv_est_clpv'));
+        }
+
+        if ($estadoActualProv !== '') {
+            if ($estadoActualProv === 'A') {
+                $estadoActualProv = 'AC';
+            } elseif ($estadoActualProv === 'S') {
+                $estadoActualProv = 'SU';
+            } elseif ($estadoActualProv === 'P') {
+                $estadoActualProv = 'PE';
+            }
+
+            $oReturn->script("editar('" . $estadoActualProv . "')");
+        }
+    }
+
     $textoModal = $huboCambios
         ? 'Los documentos UAFE se actualizaron correctamente.'
         : 'No se registraron cambios en documentos UAFE.';
