@@ -1126,9 +1126,11 @@ function genera_formulario_cliente($sAccion = 'nuevo', $aForm = '', $cod, $pedi)
             WHERE empr_cod_empr = $idempresa;
         ";
 
-        $usaUAFE = consulta_string($sqlUafeEmp, 'emmpr_uafe_cprov', $oCon, 'f');
+        $valorUafeRaw = consulta_string($sqlUafeEmp, 'emmpr_uafe_cprov', $oCon, 'f');
+        $usaUAFE = valorLogicoActivado($valorUafeRaw);
         $oReturn->script("
-            console.log('%cline 1: VALOR RAW DE usaUAFE = ' + JSON.stringify('$usaUAFE'), 'color:yellow;font-weight:bold');
+            console.log('%cline 1: VALOR RAW DE usaUAFE = ' + JSON.stringify('$valorUafeRaw'), 'color:yellow;font-weight:bold');
+            console.log('%cline 1b: usaUAFE normalizado = ' + JSON.stringify('$usaUAFE'), 'color:yellow;font-weight:bold');
         ");
 
         //------------------------------------------------------------------------------
@@ -1139,7 +1141,7 @@ function genera_formulario_cliente($sAccion = 'nuevo', $aForm = '', $cod, $pedi)
     //  BLOQUE UAFE: BLOQUEAR/HABILITAR ESTADO EN EDICIÓN SEGÚN DOCUMENTOS
     //------------------------------------------------------------------------------
 
-    if ($sAccion == 'editar' && $usaUAFE == 't') {
+    if ($sAccion == 'editar' && $usaUAFE) {
 
         $bloquearPorUafe = debeBloquearEstadoPorUafe($idempresa, $cod, $oCon);
 
@@ -1445,19 +1447,19 @@ function genera_formulario_cliente($sAccion = 'nuevo', $aForm = '', $cod, $pedi)
         $oReturn->script("console.log('DEBUG: FORMULARIO GENERADO');");
 
         $oReturn->script("console.log('ACCION REAL = [$sAccion]');");
-        $oReturn->script("console.log('usaUAFE = [$usaUAFE]');");
+        $oReturn->script("console.log('usaUAFE = [" . ($usaUAFE ? 't' : 'f') . "]');");
 
 
         $oReturn->script("
             console.log('%cline 2: Evaluando condicional…','color:cyan;font-weight:bold');
             console.log('%c  sAccion: $sAccion','color:cyan');
-            console.log('%c  usaUAFE: $usaUAFE  (tipo: " . gettype($usaUAFE) . ")','color:cyan');
-            console.log('%c  Condicion (usaUAFE == \"t\"): ' + (" . ($usaUAFE == 't' ? 'true' : 'false') . "), 'color:cyan');
+            console.log('%c  usaUAFE: " . ($usaUAFE ? 't' : 'f') . "  (tipo: " . gettype($usaUAFE) . ")','color:cyan');
+            console.log('%c  Condicion usaUAFE: ' + (" . ($usaUAFE ? 'true' : 'false') . "), 'color:cyan');
         ");
 
 
 
-        if ($sAccion == 'nuevo' && $usaUAFE == 't') {
+        if ($sAccion == 'nuevo' && $usaUAFE) {
 
             $oReturn->script("
                 console.log('%cline 3: ENTRÓ AL IF DE BLOQUEO', 'color:lime;font-weight:bold');
@@ -7134,6 +7136,13 @@ function FooterMap($id_contrato, $opcion)
 //INICIO FUNCIONES DE LA UAFE Y DOCUMENTOS
 //-----------------------------------------------------------------------------------------
 
+function valorLogicoActivado($valor)
+{
+    $normalizado = strtolower(trim((string) $valor));
+
+    return in_array($normalizado, ['t', 'true', '1', 's', 'si', 'y'], true);
+}
+
 function usaValidacionUAFE($idempresa, $oCon)
 {
     $sqlUafe = "
@@ -7142,7 +7151,9 @@ function usaValidacionUAFE($idempresa, $oCon)
         WHERE empr_cod_empr = $idempresa
     ";
 
-    return consulta_string($sqlUafe, 'emmpr_uafe_cprov', $oCon, 'f') === 't';
+    $valor = consulta_string($sqlUafe, 'emmpr_uafe_cprov', $oCon, 'f');
+
+    return valorLogicoActivado($valor);
 }
 
 function debeBloquearEstadoPorUafe($idempresa, $id_clpv, $oCon)
