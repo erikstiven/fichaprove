@@ -992,6 +992,7 @@ if (isset($_REQUEST['codpedi'])) {
             xajax_guardarAdjuntosUAFE(id_clpv);
         }
 
+
     </script>
 
     <script>
