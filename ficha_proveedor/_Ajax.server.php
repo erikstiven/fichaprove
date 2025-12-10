@@ -1905,6 +1905,26 @@ function enviaEmail($aForm = '', $correo_destino = '')
 
                 // RUTA PARA ENVIO DE DOCUMENTOS AL EMAIL = 'Include/Clases/Formulario/Plugins/reloj/'
                 $rutaArchivo = DIR_FACTELEC . 'Include/Clases/Formulario/Plugins/reloj/' . $ruta;
+                $nombreAdjunto = basename($ruta);
+                if (empty($nombreAdjunto)) {
+                    $nombreAdjunto = $titulo;
+                }
+
+                $mimeType = false;
+                if (function_exists('mime_content_type')) {
+                    $mimeType = @mime_content_type($rutaArchivo);
+                }
+                if (!$mimeType) {
+                    $finfo = finfo_open(FILEINFO_MIME_TYPE);
+                    if ($finfo) {
+                        $mimeType = finfo_file($finfo, $rutaArchivo);
+                        finfo_close($finfo);
+                    }
+                }
+                if (!$mimeType) {
+                    $mimeType = 'application/octet-stream';
+                }
+
                 // TRAEMOS LA INFORMACION DE CADA ARCHIVO
                 $archivo_get_content = file_get_contents($rutaArchivo);
                 // CONVERTIENDO LA INFORMACION DEL ARCHIVO EN BASE64
@@ -1912,8 +1932,9 @@ function enviaEmail($aForm = '', $correo_destino = '')
 
                 // GUARDANDO EN UN ARRAY DE OBJETOS LOS ARCHIVOS CARGADOS
                 $data_documentos = array(
-                    "name" => $titulo,
-                    "content" => $archivo_base64
+                    "name" => $nombreAdjunto,
+                    "content" => $archivo_base64,
+                    "mime_type" => $mimeType
                 );
                 array_push($array_documentos, $data_documentos);
 
