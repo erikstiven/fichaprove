@@ -5,7 +5,9 @@ function habilitarEstadoProveedor(bloquear) {
     const bloquearEstado = bloquear === true || bloquear === 'true' || bloquear === 1 || bloquear === '1';
     console.log("Ejecutando habilitarEstadoProveedor. bloquear=", bloquearEstado);
 
-    const radios = document.querySelectorAll('input[name="estado"]');
+    const radios = ['AC', 'PE', 'SU']
+        .map((id) => document.getElementById(id))
+        .filter((r) => r && r.type === 'radio');
     radios.forEach((r) => {
         r.disabled = bloquearEstado;
     });

@@ -7134,7 +7134,7 @@ function valorLogicoActivado($valor)
 {
     $normalizado = strtolower(trim((string) $valor));
 
-    return in_array($normalizado, ['t', 'true', '1', 's', 'si', 'y'], true);
+    return $normalizado === 't';
 }
 
 function usaValidacionUAFE($idempresa, $oCon)
@@ -7371,8 +7371,20 @@ function validarEstadoUAFEProveedor($id_clpv)
     $oCon->Conectar();
 
     $usaUafe = usaValidacionUAFE($idempresa, $oCon);
+
+    if (!$usaUafe) {
+        $oReturn->script("habilitarEstadoProveedor(false);");
+
+        $estadoVisual = obtenerEstadoProveedorInformix($idempresa, $id_clpv);
+        if ($estadoVisual !== '') {
+            $oReturn->script("editar('$estadoVisual');");
+        }
+
+        return $oReturn;
+    }
+
     $cumple  = proveedorCumpleUafe($idempresa, $id_clpv, $oCon);
-    $bloquear = $usaUafe ? !$cumple : false;
+    $bloquear = !$cumple;
 
     // Solo manejar la UI; no alterar estado al momento de editar
     $oReturn->script("habilitarEstadoProveedor(" . ($bloquear ? 'true' : 'false') . ");");
@@ -8045,6 +8057,7 @@ function guardarAdjuntosUAFE($id_clpv)
     $oCon->Conectar();
 
     $usaUafe = usaValidacionUAFE($idempresa, $oCon);
+    $cumpliaAntes = $usaUafe ? proveedorCumpleUafe($idempresa, $id_clpv, $oCon) : false;
 
     try {
 
@@ -8061,29 +8074,50 @@ function guardarAdjuntosUAFE($id_clpv)
 
     unset($_SESSION['uafeCambios'][$id_clpv]);
 
-    $cumple = proveedorCumpleUafe($idempresa, $id_clpv, $oCon);
+    $cumple = $usaUafe ? proveedorCumpleUafe($idempresa, $id_clpv, $oCon) : false;
     $bloquear = $usaUafe ? !$cumple : false;
-    sincronizarEstadoProveedorPorUafe($idempresa, $id_clpv, $bloquear);
-
-    $oReturn->script("habilitarEstadoProveedor(" . ($bloquear ? 'true' : 'false') . ");");
 
     $estadoVisual = obtenerEstadoProveedorInformix($idempresa, $id_clpv);
-    if ($estadoVisual === '') {
-        $estadoVisual = $bloquear ? 'PE' : 'AC';
-    }
-    $oReturn->script("editar('$estadoVisual');");
 
-    $mensaje = $bloquear
-        ? array(
-            'icon'  => 'warning',
-            'title' => 'Documentos incompletos',
-            'text'  => 'Faltan documentos UAFE por cumplir o vigentes.',
-        )
-        : array(
-            'icon'  => 'success',
+    if ($usaUafe) {
+        if ($cumple && !$cumpliaAntes) {
+            sincronizarEstadoProveedorPorUafe($idempresa, $id_clpv, false);
+            $estadoVisual = 'AC';
+            $mensaje = array(
+                'icon'  => 'success',
+                'title' => 'Documentos UAFE ENTREGADOS',
+                'text'  => 'Se cumplen con todos los documentos solicitados. El proveedor pasará a estado Activo.',
+            );
+        } elseif (!$cumple) {
+            sincronizarEstadoProveedorPorUafe($idempresa, $id_clpv, true);
+            $estadoVisual = 'PE';
+            $mensaje = array(
+                'icon'  => 'warning',
+                'title' => 'Documentos incompletos',
+                'text'  => 'Faltan documentos UAFE por cumplir.',
+            );
+        } else {
+            $estadoVisual = $estadoVisual === '' ? 'AC' : $estadoVisual;
+            $mensaje = array(
+                'icon'  => 'info',
+                'title' => 'Documentos UAFE actualizados',
+                'text'  => 'Este proveedor tiene los documentos UAFE entregados y vigentes.',
+            );
+        }
+    } else {
+        $bloquear = false;
+        $mensaje = array(
+            'icon'  => 'info',
             'title' => 'Documentos UAFE actualizados',
             'text'  => 'Este proveedor tiene los documentos UAFE entregados y vigentes.',
         );
+    }
+
+    $oReturn->script("habilitarEstadoProveedor(" . ($bloquear ? 'true' : 'false') . ");");
+
+    if ($estadoVisual !== '') {
+        $oReturn->script("editar('$estadoVisual');");
+    }
 
     $oReturn->script("Swal.fire({
         icon: '{$mensaje['icon']}',
