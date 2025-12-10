@@ -7962,6 +7962,9 @@ function consultarAdjuntosUafe($aForm = '')
                     <button class='btn btn-primary btn-sm' onclick='guardarAdjuntosUAFE();'>
                         <span class='glyphicon glyphicon-floppy-disk'></span> Guardar
                     </button>
+                    <button class='btn btn-info btn-sm' onclick='notificarDocumentosUAFE();'>
+                        <span class='glyphicon glyphicon-envelope'></span> Notificar documentos UAFE al proveedor
+                    </button>
                 </div>
             </td>
         </tr>
@@ -8165,6 +8168,233 @@ function guardarAdjuntosUAFE($id_clpv)
     }
 
     $oReturn->script("consultarAdjuntosUafe();");
+
+    return $oReturn;
+}
+
+function notificarDocumentosUAFE($id_clpv)
+{
+    global $DSN_Ifx, $DSN;
+
+    if (session_status() !== PHP_SESSION_ACTIVE) {
+        session_start();
+    }
+
+    $oReturn = new xajaxResponse();
+
+    $oIfx = new Dbo;
+    $oIfx->DSN = $DSN_Ifx;
+    $oIfx->Conectar();
+
+    $oCon = new Dbo;
+    $oCon->DSN = $DSN;
+    $oCon->Conectar();
+
+    $idempresa = $_SESSION['U_EMPRESA'];
+
+    // Validar correo registrado
+    $sqlCorreo = "
+        SELECT emai_ema_emai
+        FROM saeemai
+        WHERE emai_cod_clpv = $id_clpv
+          AND emai_cod_tiem = 1
+          AND emai_cod_empr = $idempresa
+        ORDER BY emai_cod_emai
+        LIMIT 1
+    ";
+
+    $correoProveedor = '';
+    if ($oIfx->Query($sqlCorreo) && $oIfx->NumFilas() > 0) {
+        $correoProveedor = trim($oIfx->f('emai_ema_emai'));
+    }
+
+    if ($correoProveedor === '') {
+        $oReturn->script("Swal.fire({icon:'warning', title:'Falta correo electrónico', text:'El proveedor no tiene un correo registrado. Para enviar la notificación UAFE, primero debe registrar un correo electrónico de contacto.'}).then(function(){xajax_seleccionaItem($id_clpv);cambiarPestanna(pestanas,pestana2);});");
+        return $oReturn;
+    }
+
+    // Validar existencia de documentos UAFE
+    $sqlDocs = "
+        SELECT a.titulo, a.ruta
+        FROM comercial.adjuntos_clpv a
+        INNER JOIN comercial.archivos_uafe u
+            ON u.id = a.id_archivo_uafe
+        WHERE a.id_clpv   = $id_clpv
+          AND a.id_empresa = $idempresa
+          AND a.estado    <> 'AN'
+          AND u.empr_cod_empr = $idempresa
+          AND u.estado = 'AC'
+    ";
+
+    $adjuntos = array();
+    if ($oCon->Query($sqlDocs) && $oCon->NumFilas() > 0) {
+        do {
+            $titulo = trim($oCon->f('titulo'));
+            $rutaAdj = trim($oCon->f('ruta'));
+
+            if ($rutaAdj === '') {
+                continue;
+            }
+
+            $rutaLimpia = ltrim(str_replace('../', '', $rutaAdj), '/');
+            $rutaArchivo = DIR_FACTELEC . $rutaLimpia;
+
+            if (!file_exists($rutaArchivo)) {
+                continue;
+            }
+
+            $nombreAdjunto = basename($rutaArchivo);
+            if ($nombreAdjunto === '' && $titulo !== '') {
+                $nombreAdjunto = $titulo;
+            }
+
+            $mimeType = false;
+            if (function_exists('mime_content_type')) {
+                $mimeType = @mime_content_type($rutaArchivo);
+            }
+            if (!$mimeType) {
+                $finfo = finfo_open(FILEINFO_MIME_TYPE);
+                if ($finfo) {
+                    $mimeType = finfo_file($finfo, $rutaArchivo);
+                    finfo_close($finfo);
+                }
+            }
+            if (!$mimeType) {
+                $mimeType = 'application/octet-stream';
+            }
+
+            $contenido = file_get_contents($rutaArchivo);
+            $adjuntos[] = array(
+                'name' => $nombreAdjunto,
+                'content' => base64_encode($contenido),
+                'mime_type' => $mimeType
+            );
+        } while ($oCon->SiguienteRegistro());
+    }
+
+    $oCon->Free();
+
+    if (count($adjuntos) === 0) {
+        $oReturn->script("Swal.fire({icon:'info', title:'No existen documentos UAFE', text:'Este proveedor aún no tiene documentos UAFE cargados. No hay información para enviar.'});");
+        return $oReturn;
+    }
+
+    // Datos de empresa
+    $sqlEmpr = "
+        SELECT empr_nom_empr, empr_dir_empr, empr_tel_resp, empr_token_api
+        FROM saeempr
+        WHERE empr_cod_empr = $idempresa
+    ";
+
+    $compania = '';
+    $dirMatriz = '';
+    $empr_tel_resp = '';
+    $empr_api_toke = '';
+
+    if ($oIfx->Query($sqlEmpr)) {
+        $compania = $oIfx->f("empr_nom_empr");
+        $dirMatriz = $oIfx->f('empr_dir_empr');
+        $empr_tel_resp = $oIfx->f("empr_tel_resp");
+        $empr_api_toke = $oIfx->f("empr_token_api");
+    }
+
+    // Configuración SMTP
+    $sqlSmtp = "SELECT server, port, auth, config_email.user, pass, ssltls, mail
+                FROM comercial.config_email
+                WHERE id_empresa = $idempresa AND id_tipo = 1";
+
+    $host = '';
+    $port = '';
+    $smtpauth = '';
+    $userid = '';
+    $smtpsecure = '';
+    $mailenvio = '';
+    $password = '';
+
+    if ($oIfx->Query($sqlSmtp) && $oIfx->NumFilas() > 0) {
+        $host = $oIfx->f('server');
+        $port = $oIfx->f('port');
+        $smtpauth = $oIfx->f('auth');
+        $userid = $oIfx->f('user');
+        $smtpsecure = $oIfx->f('ssltls');
+        $mailenvio = $oIfx->f('mail');
+        $password = $oIfx->f('pass');
+    }
+
+    if ($smtpsecure == 'S' || $smtpsecure == 'ssl') {
+        $smtpsecure = 'ssl';
+    } else {
+        $smtpsecure = 'tls';
+    }
+
+    $secure_type = $smtpsecure;
+
+    $cuerpo_correo_html = "<div style='width: 900px;'>
+                                <table style='width:850px;'>
+                                        <tr>
+                                               <td>Estimado proveedor,</td>
+                                        </tr>
+                                        <tr><td>&nbsp;</td></tr>
+                                        <tr>
+                                               <td>Se han enviado los documentos UAFE correspondientes para su revisión.</td>
+                                        </tr>
+                                </table>
+                                <br/>
+                                <table style='width:850px;'>
+                                        <tr>
+                                                <td>Atentamente,</td>
+                                        </tr>
+                                        <tr>&nbsp;</tr>
+                                        <tr>&nbsp;</tr>
+                                        <tr>
+                                                <td style='font-weight: bold; font-size: 13px;'>$compania</td>
+                                        </tr>
+                                        <tr>&nbsp;</tr>
+                                        <tr>
+                                                <td style='font-weight: bold;'>Dire.: $dirMatriz</td>
+                                        </tr>
+                                        <tr>
+                                                <td style='font-weight: bold;'>Telf.: $empr_tel_resp</td>
+                                        </tr>
+                                         <tr>&nbsp;</tr>
+                                </table>
+                        </div>";
+
+    $data = array(
+        "smtp_server" => $host . ":" . $port,
+        "secure_type" => $secure_type,
+        "username" => $userid,
+        "password" => $password,
+        "from_address" => $mailenvio,
+        "to_address" => array($correoProveedor),
+        "to_cc" => array(),
+        "title" => 'Documentos UAFE – Notificación de entrega',
+        "content" => $cuerpo_correo_html,
+        "attachments" => $adjuntos
+    );
+
+    $headers = array(
+        "Content-Type:application/json",
+        "Token-Api:$empr_api_toke"
+    );
+
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+    curl_setopt($ch, CURLOPT_URL, URL_JIREH_WS_CORREOS . "/api/v1/correo/enviar");
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    $respuesta = curl_exec($ch);
+    $resultado = json_decode($respuesta, true);
+
+    $mensaje = isset($resultado["msg"]) ? $resultado["msg"] : '';
+    $enviado = isset($resultado["result"]) ? $resultado["result"] : false;
+
+    if ($enviado == true) {
+        $oReturn->script("Swal.fire({icon:'success', title:'Notificación enviada', text:'La notificación UAFE ha sido enviada exitosamente al proveedor.'});");
+    } else {
+        $oReturn->alert("Error al enviar email" . $mensaje);
+    }
 
     return $oReturn;
 }
