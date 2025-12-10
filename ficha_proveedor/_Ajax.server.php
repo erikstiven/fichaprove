@@ -8023,6 +8023,12 @@ function consultarAdjuntosUafe($aForm = '')
             $i++;
 
         } while ($oCon->SiguienteRegistro());
+    } else {
+        $html .= "
+            <tr>
+                <td colspan='8' align='center'><em>No existen adjuntos UAFE registrados.</em></td>
+            </tr>
+        ";
     }
 
     $html .= "</table>";
