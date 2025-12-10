@@ -37,7 +37,7 @@ $xajax->registerFunction("eliminarArchivoUAFE");
 $xajax->registerFunction("cambiarEstadoUafe");
 $xajax->registerFunction("guardarAdjuntosUAFE");
 $xajax->registerFunction("validarEstadoUAFEProveedor");
-$xajax->registerFunction("notificarDocumentosUAFE");
+//$xajax->registerFunction("notificarDocumentosUAFE");
 
 
 //-------------------------------------------------

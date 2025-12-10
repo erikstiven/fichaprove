@@ -992,14 +992,6 @@ if (isset($_REQUEST['codpedi'])) {
             xajax_guardarAdjuntosUAFE(id_clpv);
         }
 
-        function notificarDocumentosUAFE() {
-            let id_clpv = document.getElementById("codigoCliente").value;
-            if (id_clpv !== '') {
-                xajax_notificarDocumentosUAFE(id_clpv);
-            } else {
-                alert("Seleccione Cliente para continuar...!");
-            }
-        }
 
     </script>
 
