@@ -7195,17 +7195,6 @@ function usaValidacionUAFE($idempresa, $oCon)
     return valorLogicoActivado($valor);
 }
 
-function obtenerPeriodoRequeridoUafe($idempresa, $id_clpv, $oCon)
-{
-    $fechaVencimiento = obtenerFechaVencimientoUafe($idempresa, $id_clpv, $oCon);
-
-    if ($fechaVencimiento === '') {
-        return null;
-    }
-
-    return intval(substr($fechaVencimiento, 0, 4));
-}
-
 function obtenerDocumentosUafeProveedor($idempresa, $id_clpv, $oCon)
 {
     $datos = [];
@@ -7219,10 +7208,10 @@ function obtenerDocumentosUafeProveedor($idempresa, $id_clpv, $oCon)
             COALESCE(ac.estado, 'PE') AS estado,
             ac.fecha_entrega,
             ac.periodo_uafe,
-            ac.fec_vencimiento_real
+            COALESCE(ac.fec_vencimiento_uafe, ac.fec_vencimiento_real) AS fec_vencimiento_uafe
         FROM comercial.archivos_uafe u
         LEFT JOIN LATERAL (
-            SELECT id, ruta, estado, fecha_entrega, periodo_uafe, fec_vencimiento_real
+            SELECT id, ruta, estado, fecha_entrega, periodo_uafe, COALESCE(fec_vencimiento_uafe, fec_vencimiento_real) AS fec_vencimiento_uafe
             FROM comercial.adjuntos_clpv
             WHERE id_archivo_uafe = u.id
               AND id_clpv = $id_clpv
@@ -7243,7 +7232,7 @@ function obtenerDocumentosUafeProveedor($idempresa, $id_clpv, $oCon)
     do {
         $estado = trim($oCon->f('estado'));
         $periodo = $oCon->f('periodo_uafe');
-        $fecVenc = $oCon->f('fec_vencimiento_real');
+        $fecVenc = $oCon->f('fec_vencimiento_uafe');
 
         $periodoDoc = ($periodo === '' || $periodo === null) ? null : intval($periodo);
         $fecVencDoc = ($fecVenc === '' || $fecVenc === null) ? null : substr($fecVenc, 0, 10);
@@ -7257,7 +7246,7 @@ function obtenerDocumentosUafeProveedor($idempresa, $id_clpv, $oCon)
             'estado'               => $estado,
             'fecha_entrega'        => $oCon->f('fecha_entrega'),
             'periodo_uafe'         => $periodoDoc,
-            'fec_vencimiento_real' => $fecVencDoc,
+            'fec_vencimiento_uafe' => $fecVencDoc,
             'vencido'              => $vencidoDoc,
         ];
 
@@ -7311,6 +7300,10 @@ function proveedorCumpleUafe($idempresa, $id_clpv, $oCon)
         if ($doc['vencido']) {
             return false;
         }
+
+        if ($doc['fec_vencimiento_uafe'] === null) {
+            return false;
+        }
     }
 
     return true;
@@ -7318,10 +7311,6 @@ function proveedorCumpleUafe($idempresa, $id_clpv, $oCon)
 
 function marcarAdjuntosUafeVencidos($idempresa, $id_clpv, $oCon)
 {
-    if (!usaValidacionUAFE($idempresa, $oCon)) {
-        return;
-    }
-
     $sql = "
         UPDATE comercial.adjuntos_clpv
         SET estado = 'VE'
@@ -7329,8 +7318,8 @@ function marcarAdjuntosUafeVencidos($idempresa, $id_clpv, $oCon)
           AND id_clpv = $id_clpv
           AND id_archivo_uafe IS NOT NULL
           AND estado = 'AC'
-          AND fec_vencimiento_real IS NOT NULL
-          AND CURRENT_DATE > fec_vencimiento_real
+          AND COALESCE(fec_vencimiento_uafe, fec_vencimiento_real) IS NOT NULL
+          AND CURRENT_DATE > COALESCE(fec_vencimiento_uafe, fec_vencimiento_real)
     ";
 
     $oCon->QueryT($sql);
@@ -7358,19 +7347,19 @@ function aplicarCambiosUafePendientes($idempresa, $idsucursal, $id_clpv, $oCon)
     }
 
     $fechaVencimientoActual = obtenerFechaVencimientoUafe($idempresa, $id_clpv, $oCon);
-    $periodoVencimientoActual = ($fechaVencimientoActual !== '') ? intval(substr($fechaVencimientoActual, 0, 4)) : null;
+    $periodoEntrega = intval(date('Y'));
     $fechaVencimientoSql = ($fechaVencimientoActual !== '') ? "'" . substr($fechaVencimientoActual, 0, 10) . "'" : "NULL";
 
     foreach ($cambios as $id_uafe => $estado) {
         $estado = ($estado === 'AC') ? 'AC' : 'PE';
         $fecha  = ($estado === 'AC') ? 'CURRENT_DATE' : 'NULL';
-        $periodo = ($estado === 'AC' && $periodoVencimientoActual !== null) ? $periodoVencimientoActual : 'NULL';
-        $fecVencimientoReal = ($estado === 'AC') ? $fechaVencimientoSql : 'NULL';
+        $periodo = ($estado === 'AC') ? $periodoEntrega : 'NULL';
+        $fecVencimiento = ($estado === 'AC') ? $fechaVencimientoSql : 'NULL';
 
         $id_uafe = intval($id_uafe);
 
-        $sqlExiste = "
-            SELECT id, estado, fecha_entrega, periodo_uafe, fec_vencimiento_real
+            $sqlExiste = "
+            SELECT id, estado, fecha_entrega, periodo_uafe, COALESCE(fec_vencimiento_uafe, fec_vencimiento_real) AS fec_vencimiento_uafe
             FROM comercial.adjuntos_clpv
             WHERE id_clpv = $id_clpv
               AND id_archivo_uafe = $id_uafe
@@ -7405,7 +7394,7 @@ function aplicarCambiosUafePendientes($idempresa, $idsucursal, $id_clpv, $oCon)
                 SET estado = '$estado',
                     fecha_entrega = $fecha,
                     periodo_uafe = $periodo,
-                    fec_vencimiento_real = $fecVencimientoReal
+                    fec_vencimiento_uafe = $fecVencimiento
                 WHERE id = $id_adj;
             ";
 
@@ -7415,7 +7404,7 @@ function aplicarCambiosUafePendientes($idempresa, $idsucursal, $id_clpv, $oCon)
 
         $sqlIns = "
             INSERT INTO comercial.adjuntos_clpv
-            (id_empresa, id_sucursal, id_clpv, id_archivo_uafe, titulo, estado, fecha_entrega, periodo_uafe, fec_vencimiento_real)
+            (id_empresa, id_sucursal, id_clpv, id_archivo_uafe, titulo, estado, fecha_entrega, periodo_uafe, fec_vencimiento_uafe)
             VALUES (
                 $idempresa,
                 $idsucursal,
@@ -7425,7 +7414,7 @@ function aplicarCambiosUafePendientes($idempresa, $idsucursal, $id_clpv, $oCon)
                 '$estado',
                 $fecha,
                 $periodo,
-                $fecVencimientoReal
+                $fecVencimiento
             );
         ";
 
@@ -8009,101 +7998,48 @@ function consultarAdjuntosUafe($aForm = '')
     $oCon->DSN = $DSN;
     $oCon->Conectar();
 
-    marcarAdjuntosUafeVencidos($idempresa, $id_clpv, $oCon);
+    $usaUafe = usaValidacionUAFE($idempresa, $oCon);
+    if ($usaUafe) {
+        marcarAdjuntosUafeVencidos($idempresa, $id_clpv, $oCon);
+    }
 
-    $fechaVencimientoActual = obtenerFechaVencimientoUafe($idempresa, $id_clpv, $oCon);
-    $periodoActual = ($fechaVencimientoActual !== '') ? intval(substr($fechaVencimientoActual, 0, 4)) : null;
     $documentos = obtenerDocumentosUafeProveedor($idempresa, $id_clpv, $oCon);
 
-    // -----------------------------------------------------------------------
-    // INICIO TABLA DE DOCUMENTOS UAFE
-    // -----------------------------------------------------------------------
     $html  = "<table class='table table-bordered table-hover' style='width:98%;'>";
-    // INICIO CABECERA DE LA TABLA
-    $html .= "
-        <tr>
-            <td colspan='8' style='padding:8px;'>
-                <div style='display:flex; justify-content:space-between; align-items:center;'>
-                    <h5 style='margin:0;'>ADJUNTOS <small>Documentos UAFE</small></h5>
-
-                    <button class='btn btn-primary btn-sm' onclick='guardarAdjuntosUAFE();'>
-                        <span class='glyphicon glyphicon-floppy-disk'></span> Guardar
-                    </button>
-                </div>
-            </td>
-        </tr>
-    ";
-
-    $html .= "
-        <tr class='bg-primary text-white'>
-            <th>No.</th>
-            <th>Documento</th>
-            <th>Archivo</th>
-            <th>Fecha Entrega</th>
-            <th>Fecha Vencimiento Real</th>
-            <th>Estado</th>
-            <th>Cumplimiento</th>
-            <th>Acción</th>
-        </tr>
-    ";
-    // FIN CABECERA DE LA TABLA
-
+    $html .= "<tr class='active'>";
+    $html .= "<th style='width:5%;'>No.</th>";
+    $html .= "<th style='width:25%;'>Documento</th>";
+    $html .= "<th style='width:15%;'>Archivo</th>";
+    $html .= "<th style='width:15%;'>Fecha Entrega</th>";
+    $html .= "<th style='width:15%;'>Fecha Vencimiento</th>";
+    $html .= "<th style='width:10%;'>Estado</th>";
+    $html .= "<th style='width:10%; text-align:center;'>Cumplimiento</th>";
+    $html .= "<th style='width:5%; text-align:center;'>Acción</th>";
+    $html .= "</tr>";
 
     if (count($documentos) > 0) {
-
         $i = 1;
-
         foreach ($documentos as $doc) {
-            $id_uafe  = $doc['id_uafe'];
-            $id_adj   = $doc['id_adj'];
-            $titulo   = $doc['titulo'];
-            $estadoBase   = $doc['estado'];
-            $rutaAdj  = trim($doc['ruta']);
-            $fecEnt   = $doc['fecha_entrega'];
-            $periodoDoc = $doc['periodo_uafe'];
-            $fecVencReal = $doc['fec_vencimiento_real'];
+            $id_uafe = $doc['id_uafe'];
+            $titulo  = $doc['titulo'];
+            $id_adj  = $doc['id_adj'];
+            $rutaAdj = trim((string) $doc['ruta']);
+            $estado  = $doc['estado'] ?: 'PE';
 
-            $tieneCambios = isset($_SESSION['uafeCambios'][$id_clpv][$id_uafe]);
-            if ($tieneCambios) {
-                $estadoBase = $_SESSION['uafeCambios'][$id_clpv][$id_uafe];
-                if ($estadoBase === 'AC') {
-                    $fecEnt = date('Y-m-d');
-                    $periodoDoc = $periodoActual;
-                    $fecVencReal = ($fechaVencimientoActual !== '') ? substr($fechaVencimientoActual, 0, 10) : null;
-                } else {
-                    $fecEnt = null;
-                    $periodoDoc = null;
-                    $fecVencReal = null;
-                }
+            if ($doc['vencido'] && $estado === 'AC') {
+                $estado = 'VE';
             }
 
-            $fecEntMostrar = ($fecEnt != "" && $fecEnt != NULL)
-                ? substr($fecEnt, 0, 10)
-                : "---";
+            $checked = ($estado === 'AC') ? 'checked' : '';
+            $fecEntMostrar = ($doc['fecha_entrega']) ? substr($doc['fecha_entrega'], 0, 10) : '---';
+            $fecVenc = $doc['fec_vencimiento_uafe'];
+            $fecVencMostrar = ($fecVenc) ? $fecVenc : '---';
 
-            $fecVencMostrar = ($fecVencReal != "" && $fecVencReal != NULL)
-                ? substr($fecVencReal, 0, 10)
-                : "---";
-
-            $esVencido = ($estadoBase === 'VE') || ($fecVencReal && date('Y-m-d') > substr($fecVencReal, 0, 10));
-
-            $estadoMostrar = $esVencido ? 'VE' : $estadoBase;
-
-            if ($tieneCambios) {
-                $estadoOriginal = $doc['vencido'] ? 'VE' : $doc['estado'];
-                if ($estadoMostrar !== $estadoOriginal) {
-                    $estadoMostrar .= ' (sin guardar)';
-                }
-            }
-
-            $checked = ($estadoBase == 'AC') ? "checked" : "";
-
-            if ($rutaAdj != "") {
+            $link = "---";
+            if ($rutaAdj !== '') {
                 $rutaAdj = str_replace('../', '', $rutaAdj);
                 $ruta = "../../Include/Clases/Formulario/Plugins/reloj/$rutaAdj";
                 $link = "<a href='$ruta' target='_blank'>Ver archivo</a>";
-            } else {
-                $link = "---";
             }
 
             $btnEliminar = ($id_adj)
@@ -8122,7 +8058,7 @@ function consultarAdjuntosUafe($aForm = '')
                     <td>$link</td>
                     <td>$fecEntMostrar</td>
                     <td>$fecVencMostrar</td>
-                    <td>$estadoMostrar</td>
+                    <td>$estado</td>
                     <td align='center'>
                         <input type='checkbox' $checked
                             onclick=\"cambiarEstadoUafe($id_uafe, $id_clpv, this.checked)\">
@@ -8139,19 +8075,12 @@ function consultarAdjuntosUafe($aForm = '')
 
     $html .= "</table>";
 
-    // -----------------------------------------------------------------------
-    // FIN TABLA DE DOCUMENTOS UAFE
-    // -----------------------------------------------------------------------
-
     $oReturn->assign("divReporteAdjuntosUafe", "innerHTML", $html);
 
-    $usaUafe = usaValidacionUAFE($idempresa, $oCon);
-    if ($usaUafe) {
-        $cumple   = proveedorCumpleUafe($idempresa, $id_clpv, $oCon);
-        $bloquear = !$cumple;
+    $cumple   = $usaUafe ? proveedorCumpleUafe($idempresa, $id_clpv, $oCon) : true;
+    $bloquear = $usaUafe ? !$cumple : false;
 
-        $oReturn->script("habilitarEstadoProveedor(" . ($bloquear ? 'true' : 'false') . ");");
-    }
+    $oReturn->script("habilitarEstadoProveedor(" . ($bloquear ? 'true' : 'false') . ");");
 
     return $oReturn;
 }
