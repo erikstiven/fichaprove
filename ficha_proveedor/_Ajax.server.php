@@ -8045,6 +8045,7 @@ function guardarAdjuntosUAFE($id_clpv)
     $oCon->Conectar();
 
     $usaUafe = usaValidacionUAFE($idempresa, $oCon);
+    $cumpliaAntes = proveedorCumpleUafe($idempresa, $id_clpv, $oCon);
 
     try {
 
@@ -8061,36 +8062,49 @@ function guardarAdjuntosUAFE($id_clpv)
 
     unset($_SESSION['uafeCambios'][$id_clpv]);
 
-    $cumple = proveedorCumpleUafe($idempresa, $id_clpv, $oCon);
-    $bloquear = $usaUafe ? !$cumple : false;
-    sincronizarEstadoProveedorPorUafe($idempresa, $id_clpv, $bloquear);
+    $cumpleDespues = proveedorCumpleUafe($idempresa, $id_clpv, $oCon);
+    $bloquearEstado = $usaUafe ? !$cumpleDespues : false;
 
-    $oReturn->script("habilitarEstadoProveedor(" . ($bloquear ? 'true' : 'false') . ");");
+    if ($usaUafe) {
+        sincronizarEstadoProveedorPorUafe($idempresa, $id_clpv, $bloquearEstado);
+    }
+
+    $oReturn->script("habilitarEstadoProveedor(" . ($bloquearEstado ? 'true' : 'false') . ");");
 
     $estadoVisual = obtenerEstadoProveedorInformix($idempresa, $id_clpv);
     if ($estadoVisual === '') {
-        $estadoVisual = $bloquear ? 'PE' : 'AC';
+        $estadoVisual = $bloquearEstado ? 'PE' : 'AC';
     }
     $oReturn->script("editar('$estadoVisual');");
 
-    $mensaje = $bloquear
-        ? array(
-            'icon'  => 'warning',
-            'title' => 'Documentos incompletos',
-            'text'  => 'Faltan documentos UAFE por cumplir o vigentes.',
-        )
-        : array(
-            'icon'  => 'success',
-            'title' => 'Documentos UAFE actualizados',
-            'text'  => 'Este proveedor tiene los documentos UAFE entregados y vigentes.',
-        );
+    if ($usaUafe) {
+        if ($cumpleDespues) {
+            $mensaje = array(
+                'icon'  => 'success',
+                'title' => 'Documentos UAFE ENTREGADOS',
+                'text'  => 'Se cumplen con todos los documentos solicitados. El proveedor pasará a estado Activo.',
+            );
+        } elseif ($cumpliaAntes && !$cumpleDespues) {
+            $mensaje = array(
+                'icon'  => 'warning',
+                'title' => 'Documentos UAFE actualizados',
+                'text'  => 'Este proveedor tiene documentos pendientes o vencidos.',
+            );
+        } else {
+            $mensaje = array(
+                'icon'  => 'warning',
+                'title' => 'Documentos incompletos',
+                'text'  => 'Faltan documentos UAFE por cumplir.',
+            );
+        }
 
-    $oReturn->script("Swal.fire({
-        icon: '{$mensaje['icon']}',
-        title: '{$mensaje['title']}',
-        text: '{$mensaje['text']}',
-        confirmButtonText: 'Aceptar'
-    });");
+        $oReturn->script("Swal.fire({
+            icon: '{$mensaje['icon']}',
+            title: '{$mensaje['title']}',
+            text: '{$mensaje['text']}',
+            confirmButtonText: 'Aceptar'
+        });");
+    }
 
     $oReturn->script("consultarAdjuntosUafe();");
 
