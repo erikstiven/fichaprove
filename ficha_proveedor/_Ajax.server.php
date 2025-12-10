@@ -2356,7 +2356,7 @@ function seleccionaItem($aForm = '', $cliente = 0)
         $oReturn->script("xajax_validarEstadoUAFEProveedor($cliente);");
 
         //MOSTRAR DOCUMENTOS UAFE DEL PROVEEDOR
-        $oReturn->script('consultarAdjuntosUafe();');
+        $oReturn->script('xajax_consultarAdjuntosUafe(xajax.getFormValues("form1"));');
 
     } catch (Exception $e) {
         $oReturn->alert($e->getMessage());
@@ -2525,7 +2525,7 @@ function seleccionaItem($aForm = '', $cliente = 0)
         $oReturn->script("xajax_validarEstadoUAFEProveedor($cliente);");
 
         //Consultar documentos UAFE visuales
-        $oReturn->script('consultarAdjuntosUafe();');
+        $oReturn->script('xajax_consultarAdjuntosUafe(xajax.getFormValues("form1"));');
 
 
         // =======================
@@ -8260,7 +8260,7 @@ function guardarAdjuntosUAFE($id_clpv)
         });");
     }
 
-    $oReturn->script("consultarAdjuntosUafe();");
+    $oReturn->script("xajax_consultarAdjuntosUafe(xajax.getFormValues('form1'));");
 
     return $oReturn;
 }
@@ -8304,7 +8304,7 @@ function eliminarArchivoUAFE($id_uafe, $id_clpv, $id_adj)
             });
         ");
 
-        $oReturn->script("consultarAdjuntosUafe();");
+        $oReturn->script("xajax_consultarAdjuntosUafe(xajax.getFormValues('form1'));");
 
     } catch (Exception $e) {
         $oCon->QueryT("ROLLBACK;");
