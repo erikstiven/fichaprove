@@ -2305,9 +2305,9 @@ function seleccionaItem($aForm = '', $cliente = 0)
             }
 
             $oReturn->script('editar(\'' . $clpv_est_clpv . '\')');
-        } else {
-            $clpv_est_clpv = 'PE';
-            $oReturn->script('editar(\'' . $clpv_est_clpv . '\')');
+        } elseif ($sAccion == 'nuevo') {
+            $estadoNuevo = $usaUAFE ? 'PE' : 'AC';
+            $oReturn->script('editar(\'' . $estadoNuevo . '\')');
         }
 
 
