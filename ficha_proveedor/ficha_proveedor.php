@@ -16,6 +16,35 @@ if (isset($_REQUEST['codpedi'])) {
 } else {
     $codpedi = 0;
 }
+
+if (!function_exists('normalizarBanderaUafe')) {
+    function normalizarBanderaUafe($valor)
+    {
+        if (is_bool($valor)) {
+            return $valor ? 't' : 'f';
+        }
+
+        $valor = strtolower(trim((string) $valor));
+        return ($valor === 't' || $valor === 'true' || $valor === '1') ? 't' : 'f';
+    }
+}
+
+if (session_status() !== PHP_SESSION_ACTIVE) {
+    session_start();
+}
+
+$usaUAFE = 'f';
+if (isset($_SESSION['U_EMPRESA'])) {
+    $idempresa = $_SESSION['U_EMPRESA'];
+
+    $oConTmp = new Dbo;
+    $oConTmp->DSN = $DSN;
+    $oConTmp->Conectar();
+
+    $sqlUafeFlag = "SELECT emmpr_uafe_cprov FROM saeempr WHERE empr_cod_empr = $idempresa;";
+    $valorUafe = consulta_string($sqlUafeFlag, 'emmpr_uafe_cprov', $oConTmp, 'f');
+    $usaUAFE = normalizarBanderaUafe($valorUafe);
+}
 ?>
 
 <? if ($ejecuta) { ?>
@@ -898,12 +927,7 @@ if (isset($_REQUEST['codpedi'])) {
         }
 
         function consultarAdjuntos() {
-            var cliente = $("#codigoCliente").val();
-            if (cliente != '') {
-                xajax_consultarAdjuntos(xajax.getFormValues("form1"));
-            } else {
-                alert("Seleccione Cliente para continuar...!");
-            }
+            xajax_consultarAdjuntos(xajax.getFormValues("form1"));
         }
 
         // Consultar documentos UAFE del proveedor seleccionado
@@ -938,8 +962,7 @@ if (isset($_REQUEST['codpedi'])) {
         }
 
         function guardarAdjuntosUAFE() {
-            let id_clpv = document.getElementById("codigoCliente").value;
-            xajax_guardarAdjuntosUAFE(id_clpv);
+            xajax_guardarAdjuntosUAFE(xajax.getFormValues("form1"));
         }
 
     </script>
@@ -963,10 +986,6 @@ if (isset($_REQUEST['codpedi'])) {
             $("#tipo_adj").on('change', cambiarTipoAdjunto);
         });
 
-        function cambiarEstadoUafe(id_uafe, id_clpv, checked) {
-            var valor = checked ? 1 : 0;
-            xajax_cambiarEstadoUafe(id_uafe, id_clpv, valor);
-        }
     </script>
 
 
@@ -1548,11 +1567,8 @@ if (isset($_REQUEST['codpedi'])) {
     </script>
 
     <?php
-        if ($usaUAFE == 't') {
-            echo "<script> habilitarEstadoProveedor(true); </script>";
-        } else {
-            echo "<script> habilitarEstadoProveedor(false); </script>";
-        }
+        $usaUAFE_js = ($usaUAFE === 't') ? 't' : 'f';
+        echo "<script>setParametroUafe('$usaUAFE_js'); if (usaUAFE === \"t\") { habilitarEstadoProveedor(true); habilitarCumplimientoUafe(false); } else { habilitarEstadoProveedor(false); habilitarCumplimientoUafe(true); }</script>";
     ?>
     <script src="js/google_maps.js"></script>
     <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyB8pAD65yn2Qtj_DTowH8xUUkUB6U_SRN0&callback=initMap"></script>
