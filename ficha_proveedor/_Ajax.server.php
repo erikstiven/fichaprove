@@ -7171,6 +7171,25 @@ function usaValidacionUAFE($idempresa, $oCon)
     return valorLogicoActivado($valor);
 }
 
+function obtenerFechaVencimientoUafe($idempresa, $id_clpv, $oCon)
+{
+    $sqlV = "
+        SELECT tprov_venc_uafe
+        FROM saetprov
+        WHERE tprov_cod_empr = $idempresa
+          AND tprov_cod_tprov = (
+                SELECT clpv_cod_tprov
+                FROM saeclpv
+                WHERE clpv_cod_clpv = $id_clpv
+                  AND clpv_cod_empr = $idempresa
+          );
+    ";
+
+    $fecha = consulta_string($sqlV, 'tprov_venc_uafe', $oCon, '');
+
+    return ($fecha !== '') ? substr($fecha, 0, 10) : '';
+}
+
 function proveedorCumpleUafe($idempresa, $id_clpv, $oCon)
 {
     if (!$id_clpv) {
@@ -7194,7 +7213,6 @@ function proveedorCumpleUafe($idempresa, $id_clpv, $oCon)
          AND ac.estado = 'AC'
         WHERE au.empr_cod_empr = $idempresa
           AND au.estado = 'AC'
-          AND (ac.fecha_entrega IS NULL OR ac.fecha_entrega::date >= CURRENT_DATE)
     ";
 
     $sqlPendientes = "
@@ -7211,11 +7229,15 @@ function proveedorCumpleUafe($idempresa, $id_clpv, $oCon)
     $totalEntregados = intval(consulta_string($sqlEntregados, 'total', $oCon, 0));
     $tienePendientes = intval(consulta_string($sqlPendientes, 'total', $oCon, 0)) > 0;
 
+    $fechaVencimiento = obtenerFechaVencimientoUafe($idempresa, $id_clpv, $oCon);
+    $hoy = date('Y-m-d');
+    $hayVencidos = ($fechaVencimiento !== '' && $hoy > $fechaVencimiento && $totalEntregados > 0);
+
     if ($totalRequeridos === 0) {
         return false;
     }
 
-    return !$tienePendientes && $totalEntregados >= $totalRequeridos;
+    return !$tienePendientes && !$hayVencidos && $totalEntregados >= $totalRequeridos;
 }
 
 function marcarAdjuntosUafeVencidos($idempresa, $id_clpv, $oCon)
@@ -7318,15 +7340,15 @@ function sincronizarEstadoProveedorPorUafe($idempresa, $id_clpv, $bloquear)
     $oIfx->DSN = $DSN_Ifx;
     $oIfx->Conectar();
 
-    $nuevoEstado   = $bloquear ? 'P' : 'A';
-    $estadoObjetivo = $bloquear ? 'A' : 'P';
+    $estadoDestino = $bloquear ? 'P' : 'A';
 
     $sql = "
         UPDATE saeclpv
-        SET clpv_est_clpv = '$nuevoEstado'
+        SET clpv_est_clpv = '$estadoDestino'
         WHERE clpv_cod_empr = $idempresa
           AND clpv_cod_clpv = $id_clpv
-          AND clpv_est_clpv = '$estadoObjetivo'
+          AND clpv_est_clpv IN ('A','P')
+          AND clpv_est_clpv <> '$estadoDestino'
     ";
 
     $oIfx->Query($sql);
@@ -7395,7 +7417,10 @@ function validarEstadoUAFEProveedor($id_clpv)
     $cumple  = proveedorCumpleUafe($idempresa, $id_clpv, $oCon);
     $bloquear = $usaUafe ? !$cumple : false;
 
-    // Solo manejar la UI; no alterar estado al momento de editar
+    if ($usaUafe) {
+        sincronizarEstadoProveedorPorUafe($idempresa, $id_clpv, $bloquear);
+    }
+
     $oReturn->script("habilitarEstadoProveedor(" . ($bloquear ? 'true' : 'false') . ");");
 
     $estadoVisual = obtenerEstadoProveedorInformix($idempresa, $id_clpv);
@@ -8046,6 +8071,18 @@ function consultarAdjuntosUafe($aForm = '')
     // -----------------------------------------------------------------------
 
     $oReturn->assign("divReporteAdjuntosUafe", "innerHTML", $html);
+
+    $usaUafe = usaValidacionUAFE($idempresa, $oCon);
+    if ($usaUafe) {
+        $cumple   = proveedorCumpleUafe($idempresa, $id_clpv, $oCon);
+        $bloquear = !$cumple;
+
+        sincronizarEstadoProveedorPorUafe($idempresa, $id_clpv, $bloquear);
+
+        $oReturn->script("editar('" . ($bloquear ? 'PE' : 'AC') . "');");
+        $oReturn->script("habilitarEstadoProveedor(" . ($bloquear ? 'true' : 'false') . ");");
+    }
+
     return $oReturn;
 }
 
