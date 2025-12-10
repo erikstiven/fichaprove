@@ -1096,13 +1096,15 @@ function genera_formulario_cliente($sAccion = 'nuevo', $aForm = '', $cod, $pedi)
                 $tableAdjuntos .= '</tr>';
 
 
-                 $tableAdjuntos .= '<tr>';
-                 $tableAdjuntos .= '<td colspan="6">
-				 					    <div class="btn btn-danger btn-sm" onclick="enviar_mail();">
-                                         Enviar notificacion por Correo
-                                             <span class=" glyphicon glyphicon-envelope"></span>
-                                        </div>
-				 				    </td>';
+                $tableAdjuntos .= '<tr>';
+                $tableAdjuntos .= '
+                    <td colspan="6" style="padding-top: 10px; padding-bottom: 10px;">
+                        <button class="btn btn-info btn-sm" onclick="enviar_mail();" style="font-weight: bold;">
+                            Notificar Documentación UAFE Requerida 
+                            <span class="glyphicon glyphicon-envelope"></span>
+                        </button>
+                    </td>
+                ';
                 $tableAdjuntos .= '</tr>';
 
                 $tableAdjuntos .= '</table>';
@@ -1542,7 +1544,7 @@ function obtenerAdjuntosProveedorHTML($idempresa, $oCon)
 
     $sHtml .= '<table class="table table-condensed table-striped table-bordered table-hover" style="width: 50%;">';
     $sHtml .= '<tr>';
-    $sHtml .= '<td colspan="4"><h5>ADJUNTOS <small>Reporte Información</small></h5></td>';
+    $sHtml .= '<td colspan="4"><h5>ADANTOS <small>Reporte Información</small></h5></td>';
     $sHtml .= '</tr>';
     $sHtml .= '<tr>';
     $sHtml .= '<td>No.</td>';
@@ -1553,16 +1555,16 @@ function obtenerAdjuntosProveedorHTML($idempresa, $oCon)
     $sql = "SELECT id, titulo, ruta
             FROM comercial.archivos_uafe
             WHERE empr_cod_empr = $idempresa
-            AND estado = 'AC'
+              AND estado = 'AC'
             ORDER BY id ASC";
 
     if ($oCon->Query($sql)) {
         if ($oCon->NumFilas() > 0) {
             $i = 1;
             do {
-                $id = $oCon->f('id');
+                $id     = $oCon->f('id');
                 $titulo = $oCon->f('titulo');
-                $ruta = $oCon->f('ruta');
+                $ruta   = $oCon->f('ruta');
 
                 $ruta = str_replace('../', '', $ruta);
                 $ruta_file = "../../Include/Clases/Formulario/Plugins/reloj/$ruta";
@@ -1570,7 +1572,10 @@ function obtenerAdjuntosProveedorHTML($idempresa, $oCon)
                 $sHtml .= '<tr>';
                 $sHtml .= '<td>' . $i++ . '</td>';
                 $sHtml .= '<td>' . $titulo . '</td>';
-                $sHtml .= '<td><a href="' . $ruta_file . '" target="_blank">' . basename($ruta) . '</a></td>';
+
+                // Aquí se reemplaza basename($ruta) por "Ver archivo"
+                $sHtml .= '<td><a href="' . $ruta_file . '" target="_blank">Ver archivo</a></td>';
+
                 $sHtml .= '</tr>';
             } while ($oCon->SiguienteRegistro());
         } else {
@@ -1582,6 +1587,7 @@ function obtenerAdjuntosProveedorHTML($idempresa, $oCon)
 
     return $sHtml;
 }
+
 
 // funcion de enviar correos electronicos
 /*function enviar_mail($aForm){
@@ -1725,36 +1731,54 @@ function enviar_mail($aForm)
         $sHtml = '
         <div class="modal-dialog modal-lg" role="document">
             <div class="modal-content">
-                <div class="modal-header">
+
+                <!-- HEADER -->
+                <div class="modal-header bg-primary" style="color: white;">
                     <button type="button" class="close" data-dismiss="modal">&times;</button>
-                    <h4 class="modal-title">REENVIO DOCUMENTOS ELECTRONICOS</h4>
+                    <h4 class="modal-title">
+                        <span class="glyphicon glyphicon-envelope"></span> Reenvío de Documentos UAFE
+                    </h4>
                 </div>
-                <div class="modal-body">';
+
+                <!-- BODY -->
+                <div class="modal-body">
+        ';
+
 
         // Campo correo
         $ifu->AgregarCampoTexto("correo", "Destinatario|left", false, $correo, 700, 600);
 
         // Input correo
         $sHtml .= '
-            <table class="table table-striped table-condensed" style="width: 99%;">
-                <tr>
-                    <td>' . $ifu->ObjetoHtmlLBL("correo") . '</td>
-                    <td>' . $ifu->ObjetoHtml("correo") . '</td>
-                </tr>
-            </table>
+        <table class="table table-striped table-condensed" style="width: 99%; margin-bottom: 15px;">
+            <tr>
+                <td style="width: 25%; font-weight: bold; vertical-align: middle;">
+                    ' . $ifu->ObjetoHtmlLBL("correo") . '
+                </td>
+                <td style="width: 75%;">' . $ifu->ObjetoHtml("correo") . '</td>
+            </tr>
+        </table>
 
-            <br>
-            <!-- <div></div> -->
-            <div style="max-height:300px; overflow-y:auto;">
-                ' . $tablaAdjuntos . '
-            </div>
+        <div style="font-size: 14px; font-weight: bold; margin-bottom: 8px;">
+            Documentos Adjuntos
         </div>
-        
-        <div class="modal-footer">
-            <button type="button" class="btn btn-default" data-dismiss="modal">Cerrar</button>
-            <button type="button" class="btn btn-primary" onclick="enviaEmail();">Procesar</button>
+
+        <div style="max-height: 300px; overflow-y: auto; border: 1px solid #ddd; padding: 8px; border-radius: 4px;">
+            ' . $tablaAdjuntos . '
         </div>
-        </div></div>';
+    </div>
+
+    <div class="modal-footer">
+        <button type="button" class="btn btn-default" data-dismiss="modal">
+            <span class="glyphicon glyphicon-remove"></span> Cerrar
+        </button>
+        <button type="button" class="btn btn-primary" onclick="enviaEmail();">
+            <span class="glyphicon glyphicon-send"></span> Procesar
+        </button>
+    </div>
+
+    </div></div>';
+
 
         // Mostrar modal
         $oReturn->assign("miModal", "innerHTML", $sHtml);
