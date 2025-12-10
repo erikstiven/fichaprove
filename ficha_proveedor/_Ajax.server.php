@@ -7968,55 +7968,93 @@ function consultarAdjuntosUafe($aForm = '')
     return $oReturn;
 }
 
+function proveedorCumpleUafe($idempresa, $id_clpv)
+{
+    global $DSN;
+
+    $oCon = new Dbo();
+    $oCon->DSN = $DSN;
+    $oCon->Conectar();
+
+    $sql = "
+        SELECT estado, fecha_vencimiento
+        FROM comercial.adjuntos_clpv
+        WHERE id_clpv = $id_clpv
+          AND id_empresa = $idempresa
+          AND id_archivo_uafe IS NOT NULL
+          AND estado <> 'AN'
+    ";
+
+    $hoy = date('Y-m-d');
+    $tieneDocumentos = false;
+    $cumple = true;
+
+    if ($oCon->Query($sql) && $oCon->NumFilas() > 0) {
+        do {
+            $tieneDocumentos = true;
+
+            $estado = trim($oCon->f('estado'));
+            $venc   = $oCon->f('fecha_vencimiento');
+
+            if ($estado !== 'AC') {
+                $cumple = false;
+                break;
+            }
+
+            if (!empty($venc) && $venc < $hoy) {
+                $cumple = false;
+                break;
+            }
+
+        } while ($oCon->SiguienteRegistro());
+    } else {
+        $cumple = false;
+    }
+
+    return $tieneDocumentos && $cumple;
+}
+
+function sincronizarEstadoProveedorPorUafe($idempresa, $id_clpv, $bloquear)
+{
+    global $DSN;
+
+    $estado = $bloquear ? 'P' : 'A';
+
+    $oCon = new Dbo();
+    $oCon->DSN = $DSN;
+    $oCon->Conectar();
+
+    $sqlUpd = "
+        UPDATE saeclpv
+        SET clpv_est_clpv = '$estado'
+        WHERE clpv_cod_clpv = $id_clpv
+          AND clpv_cod_empr = $idempresa;
+    ";
+
+    $oCon->Query($sqlUpd);
+}
+
 function guardarAdjuntosUAFE($id_clpv)
 {
     if (session_status() !== PHP_SESSION_ACTIVE) {
         session_start();
     }
 
-    global $DSN;
     $oReturn = new xajaxResponse();
 
     $idempresa  = $_SESSION['U_EMPRESA'];
 
-    $oCon = new Dbo();
-    $oCon->DSN = $DSN;
-    $oCon->Conectar();
+    $cumpliaAntes = proveedorCumpleUafe($idempresa, $id_clpv);
+    $cumpleAhora  = proveedorCumpleUafe($idempresa, $id_clpv);
+    $bloquear     = !$cumpleAhora;
 
-    //OBTENER TODOS LOS DOCUMENTOS UAFE DEL PROVEEDOR
-    $sql = "
-        SELECT estado
-        FROM comercial.adjuntos_clpv
-        WHERE id_clpv = $id_clpv
-          AND id_empresa = $idempresa
-          AND id_archivo_uafe IS NOT NULL
-          AND estado <> 'AN';
-    ";
+    sincronizarEstadoProveedorPorUafe($idempresa, $id_clpv, $bloquear);
 
-    $todosAC = true;
+    $estadoVisual = $cumpleAhora ? 'AC' : 'PE';
+    $oReturn->script("editar('$estadoVisual');");
+    $oReturn->script("habilitarEstadoProveedor(" . ($bloquear ? 'true' : 'false') . ");");
 
-    if ($oCon->Query($sql) && $oCon->NumFilas() > 0) {
-
-        do {
-            $estado = $oCon->f('estado');
-
-            if ($estado !== 'AC') {
-                $todosAC = false;
-                break;
-            }
-
-        } while ($oCon->SiguienteRegistro());
-
-    } else {
-        $todosAC = false; // No hay documentos
-    }
-
-    //SI NO ESTÁN TODOS AC → ALERTA Y SALIR
-    if (!$todosAC) {
-
-        // BLOQUEAR RADIOS
-        $oReturn->script("habilitarEstadoProveedor(false);");
-
+    if (!$cumpliaAntes && !$cumpleAhora) {
         $oReturn->script("
             Swal.fire({
                 icon: 'warning',
@@ -8025,32 +8063,36 @@ function guardarAdjuntosUAFE($id_clpv)
                 confirmButtonText: 'Aceptar'
             });
         ");
-
-        return $oReturn;
+    } elseif (!$cumpliaAntes && $cumpleAhora) {
+        $oReturn->script("
+            Swal.fire({
+                icon: 'success',
+                title: 'Documentos UAFE ENTREGADOS',
+                text: 'Se cumplen con todos los documentos solicitados. El proveedor pasará a estado Activo.',
+                confirmButtonText: 'Aceptar'
+            });
+        ");
+    } elseif ($cumpliaAntes && $cumpleAhora) {
+        $oReturn->script("
+            Swal.fire({
+                icon: 'success',
+                title: 'Documentos UAFE actualizados',
+                text: 'Este proveedor tiene los documentos UAFE entregados y vigentes.',
+                confirmButtonText: 'Aceptar'
+            });
+        ");
+    } else {
+        $oReturn->script("
+            Swal.fire({
+                icon: 'info',
+                title: 'Documentos UAFE actualizados',
+                text: 'El proveedor ya no cumple con todos los documentos UAFE requeridos. Su estado cambiará a Pendiente nuevamente.',
+                confirmButtonText: 'Aceptar'
+            });
+        ");
     }
 
-    //SI TODO ESTÁ AC ACTUALIZAR ESTADO DEL PROVEEDOR A 'A'
-    $sqlUpd = "
-        UPDATE saeclpv
-        SET clpv_est_clpv = 'A'
-        WHERE clpv_cod_clpv = $id_clpv
-          AND clpv_cod_empr = $idempresa;
-    ";
-
-    $oCon->Query($sqlUpd);
-
-    // HABILITAR RADIOS
-    $oReturn->script("habilitarEstadoProveedor(true);");
-
-    //CONFIRMACIÓN
-    $oReturn->script("
-        Swal.fire({
-            icon: 'success',
-            title: 'Guardar Documentos UAFE del Proveedor',
-            text: 'Todos los documentos están cumplidos. Estado del proveedor cambiara a estado ACTIVO.',
-            confirmButtonText: 'Aceptar'
-        });
-    ");
+    $oReturn->script("consultarAdjuntosUafe();");
 
     return $oReturn;
 }
