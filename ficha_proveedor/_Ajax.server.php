@@ -2356,7 +2356,7 @@ function seleccionaItem($aForm = '', $cliente = 0)
         $oReturn->script("xajax_validarEstadoUAFEProveedor($cliente);");
 
         //MOSTRAR DOCUMENTOS UAFE DEL PROVEEDOR
-        $oReturn->script('consultarAdjuntosUafe();');
+        $oReturn->script('xajax_consultarAdjuntosUafe(xajax.getFormValues("form1"));');
 
     } catch (Exception $e) {
         $oReturn->alert($e->getMessage());
@@ -2525,7 +2525,7 @@ function seleccionaItem($aForm = '', $cliente = 0)
         $oReturn->script("xajax_validarEstadoUAFEProveedor($cliente);");
 
         //Consultar documentos UAFE visuales
-        $oReturn->script('consultarAdjuntosUafe();');
+        $oReturn->script('xajax_consultarAdjuntosUafe(xajax.getFormValues("form1"));');
 
 
         // =======================
@@ -7195,6 +7195,66 @@ function usaValidacionUAFE($idempresa, $oCon)
     return valorLogicoActivado($valor);
 }
 
+function obtenerDocumentosUafeProveedor($idempresa, $id_clpv, $oCon)
+{
+    $datos = [];
+
+    $sql = "
+        SELECT
+            u.id AS id_uafe,
+            u.titulo,
+            ac.id AS id_adj,
+            ac.ruta,
+            COALESCE(ac.estado, 'PE') AS estado,
+            ac.fecha_entrega,
+            ac.periodo_uafe,
+            COALESCE(ac.fec_vencimiento_uafe, ac.fec_vencimiento_real) AS fec_vencimiento_uafe
+        FROM comercial.archivos_uafe u
+        LEFT JOIN LATERAL (
+            SELECT id, ruta, estado, fecha_entrega, periodo_uafe, COALESCE(fec_vencimiento_uafe, fec_vencimiento_real) AS fec_vencimiento_uafe
+            FROM comercial.adjuntos_clpv
+            WHERE id_archivo_uafe = u.id
+              AND id_clpv = $id_clpv
+              AND id_empresa = $idempresa
+              AND estado <> 'AN'
+            ORDER BY id DESC
+            LIMIT 1
+        ) ac ON TRUE
+        WHERE u.empr_cod_empr = $idempresa
+          AND u.estado = 'AC'
+        ORDER BY u.id;
+    ";
+
+    if (!$oCon->Query($sql) || $oCon->NumFilas() === 0) {
+        return $datos;
+    }
+
+    do {
+        $estado = trim($oCon->f('estado'));
+        $periodo = $oCon->f('periodo_uafe');
+        $fecVenc = $oCon->f('fec_vencimiento_uafe');
+
+        $periodoDoc = ($periodo === '' || $periodo === null) ? null : intval($periodo);
+        $fecVencDoc = ($fecVenc === '' || $fecVenc === null) ? null : substr($fecVenc, 0, 10);
+        $vencidoDoc = ($fecVencDoc !== null && date('Y-m-d') > $fecVencDoc);
+
+        $datos[] = [
+            'id_uafe'              => $oCon->f('id_uafe'),
+            'titulo'               => $oCon->f('titulo'),
+            'id_adj'               => $oCon->f('id_adj'),
+            'ruta'                 => $oCon->f('ruta'),
+            'estado'               => $estado,
+            'fecha_entrega'        => $oCon->f('fecha_entrega'),
+            'periodo_uafe'         => $periodoDoc,
+            'fec_vencimiento_uafe' => $fecVencDoc,
+            'vencido'              => $vencidoDoc,
+        ];
+
+    } while ($oCon->SiguienteRegistro());
+
+    return $datos;
+}
+
 function obtenerFechaVencimientoUafe($idempresa, $id_clpv, $oCon)
 {
     $sqlV = "
@@ -7216,68 +7276,53 @@ function obtenerFechaVencimientoUafe($idempresa, $id_clpv, $oCon)
 
 function proveedorCumpleUafe($idempresa, $id_clpv, $oCon)
 {
+    if (!usaValidacionUAFE($idempresa, $oCon)) {
+        return true;
+    }
+
     if (!$id_clpv) {
         return false;
     }
 
-    $sqlRequeridos = "
-        SELECT COUNT(*) AS total
-        FROM comercial.archivos_uafe
-        WHERE empr_cod_empr = $idempresa
-          AND estado = 'AC'
-    ";
+    marcarAdjuntosUafeVencidos($idempresa, $id_clpv, $oCon);
 
-    $sqlEntregados = "
-        SELECT COUNT(*) AS total
-        FROM comercial.archivos_uafe au
-        JOIN comercial.adjuntos_clpv ac
-          ON ac.id_archivo_uafe = au.id
-         AND ac.id_clpv = $id_clpv
-         AND ac.id_empresa = $idempresa
-         AND ac.estado = 'AC'
-        WHERE au.empr_cod_empr = $idempresa
-          AND au.estado = 'AC'
-    ";
+    $documentos = obtenerDocumentosUafeProveedor($idempresa, $id_clpv, $oCon);
 
-    $sqlPendientes = "
-        SELECT COUNT(*) AS total
-        FROM comercial.adjuntos_clpv
-        WHERE id_clpv = $id_clpv
-          AND id_empresa = $idempresa
-          AND id_archivo_uafe IS NOT NULL
-          AND estado <> 'AC'
-          AND estado <> 'AN'
-    ";
-
-    $totalRequeridos = intval(consulta_string($sqlRequeridos, 'total', $oCon, 0));
-    $totalEntregados = intval(consulta_string($sqlEntregados, 'total', $oCon, 0));
-    $tienePendientes = intval(consulta_string($sqlPendientes, 'total', $oCon, 0)) > 0;
-
-    $fechaVencimiento = obtenerFechaVencimientoUafe($idempresa, $id_clpv, $oCon);
-    $hoy = date('Y-m-d');
-    $hayVencidos = ($fechaVencimiento !== '' && $hoy > $fechaVencimiento && $totalEntregados > 0);
-
-    if ($totalRequeridos === 0) {
+    if (count($documentos) === 0) {
         return false;
     }
 
-    return !$tienePendientes && !$hayVencidos && $totalEntregados >= $totalRequeridos;
+    foreach ($documentos as $doc) {
+        if ($doc['estado'] !== 'AC') {
+            return false;
+        }
+
+        if ($doc['vencido']) {
+            return false;
+        }
+
+        if ($doc['fec_vencimiento_uafe'] === null) {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 function marcarAdjuntosUafeVencidos($idempresa, $id_clpv, $oCon)
 {
     $sql = "
         UPDATE comercial.adjuntos_clpv
-        SET estado = 'PE'
+        SET estado = 'VE'
         WHERE id_empresa = $idempresa
           AND id_clpv = $id_clpv
           AND id_archivo_uafe IS NOT NULL
           AND estado = 'AC'
-          AND fecha_entrega IS NOT NULL
-          AND fecha_entrega::date < CURRENT_DATE
+          AND COALESCE(fec_vencimiento_uafe, fec_vencimiento_real) IS NOT NULL
+          AND CURRENT_DATE > COALESCE(fec_vencimiento_uafe, fec_vencimiento_real)
     ";
 
-    $oCon->Query($sql);
+    $oCon->QueryT($sql);
 }
 
 function registrarCambioUafeTemporal($id_clpv, $id_uafe, $estado)
@@ -7301,14 +7346,20 @@ function aplicarCambiosUafePendientes($idempresa, $idsucursal, $id_clpv, $oCon)
         return;
     }
 
+    $fechaVencimientoActual = obtenerFechaVencimientoUafe($idempresa, $id_clpv, $oCon);
+    $periodoEntrega = intval(date('Y'));
+    $fechaVencimientoSql = ($fechaVencimientoActual !== '') ? "'" . substr($fechaVencimientoActual, 0, 10) . "'" : "NULL";
+
     foreach ($cambios as $id_uafe => $estado) {
         $estado = ($estado === 'AC') ? 'AC' : 'PE';
-        $fecha  = ($estado === 'AC') ? "'" . date("Y-m-d") . "'" : "NULL";
+        $fecha  = ($estado === 'AC') ? 'CURRENT_DATE' : 'NULL';
+        $periodo = ($estado === 'AC') ? $periodoEntrega : 'NULL';
+        $fecVencimiento = ($estado === 'AC') ? $fechaVencimientoSql : 'NULL';
 
         $id_uafe = intval($id_uafe);
 
-        $sqlExiste = "
-            SELECT id
+            $sqlExiste = "
+            SELECT id, estado, fecha_entrega, periodo_uafe, COALESCE(fec_vencimiento_uafe, fec_vencimiento_real) AS fec_vencimiento_uafe
             FROM comercial.adjuntos_clpv
             WHERE id_clpv = $id_clpv
               AND id_archivo_uafe = $id_uafe
@@ -7318,15 +7369,32 @@ function aplicarCambiosUafePendientes($idempresa, $idsucursal, $id_clpv, $oCon)
         ";
 
         $id_adj = 0;
+        $estadoActual = '';
+        $fechaActual = null;
+        $periodoActual = null;
         if ($oCon->QueryT($sqlExiste) && $oCon->NumFilas() > 0) {
             $id_adj = intval($oCon->f('id'));
+            $estadoActual = trim($oCon->f('estado'));
+            $fechaActual = $oCon->f('fecha_entrega');
+            $periodoActual = $oCon->f('periodo_uafe');
         }
 
         if ($id_adj > 0) {
+            $periodoActual = ($periodoActual === '' || $periodoActual === null) ? null : intval($periodoActual);
+
+            $sinCambiosAC = ($estadoActual === 'AC' && $estado === 'AC');
+            $sinCambiosPE = ($estadoActual === 'PE' && $estado === 'PE' && $fechaActual === null && $periodoActual === null);
+
+            if ($sinCambiosAC || $sinCambiosPE) {
+                continue;
+            }
+
             $sqlUpd = "
                 UPDATE comercial.adjuntos_clpv
                 SET estado = '$estado',
-                    fecha_entrega = $fecha
+                    fecha_entrega = $fecha,
+                    periodo_uafe = $periodo,
+                    fec_vencimiento_uafe = $fecVencimiento
                 WHERE id = $id_adj;
             ";
 
@@ -7336,7 +7404,7 @@ function aplicarCambiosUafePendientes($idempresa, $idsucursal, $id_clpv, $oCon)
 
         $sqlIns = "
             INSERT INTO comercial.adjuntos_clpv
-            (id_empresa, id_sucursal, id_clpv, id_archivo_uafe, titulo, estado, fecha_entrega)
+            (id_empresa, id_sucursal, id_clpv, id_archivo_uafe, titulo, estado, fecha_entrega, periodo_uafe, fec_vencimiento_uafe)
             VALUES (
                 $idempresa,
                 $idsucursal,
@@ -7344,7 +7412,9 @@ function aplicarCambiosUafePendientes($idempresa, $idsucursal, $id_clpv, $oCon)
                 $id_uafe,
                 (SELECT titulo FROM comercial.archivos_uafe WHERE id = $id_uafe),
                 '$estado',
-                $fecha
+                $fecha,
+                $periodo,
+                $fecVencimiento
             );
         ";
 
@@ -7440,10 +7510,6 @@ function validarEstadoUAFEProveedor($id_clpv)
     $usaUafe = usaValidacionUAFE($idempresa, $oCon);
     $cumple  = proveedorCumpleUafe($idempresa, $id_clpv, $oCon);
     $bloquear = $usaUafe ? !$cumple : false;
-
-    if ($usaUafe) {
-        sincronizarEstadoProveedorPorUafe($idempresa, $id_clpv, $bloquear);
-    }
 
     $oReturn->script("habilitarEstadoProveedor(" . ($bloquear ? 'true' : 'false') . ");");
 
@@ -7928,153 +7994,71 @@ function consultarAdjuntosUafe($aForm = '')
         return $oReturn;
     }
 
-    // ============================================================
-    // Obtener FECHA DE VENCIMIENTO del tipo proveedor
-    // ============================================================
-    $sqlV = "
-        SELECT tprov_venc_uafe
-        FROM saetprov
-        WHERE tprov_cod_empr = $idempresa
-          AND tprov_cod_tprov = (
-                SELECT clpv_cod_tprov
-                FROM saeclpv
-                WHERE clpv_cod_clpv = $id_clpv
-                  AND clpv_cod_empr = $idempresa
-          );
-    ";
-
     $oCon = new Dbo();
     $oCon->DSN = $DSN;
     $oCon->Conectar();
 
-    $fecVenc = "---";
-
-    if ($oCon->Query($sqlV) && $oCon->NumFilas() > 0) {
-        $fecVenc = $oCon->f('tprov_venc_uafe');
-        if ($fecVenc == "" || $fecVenc == NULL) $fecVenc = "---";
+    $usaUafe = usaValidacionUAFE($idempresa, $oCon);
+    if ($usaUafe) {
+        marcarAdjuntosUafeVencidos($idempresa, $id_clpv, $oCon);
     }
 
-    // -----------------------------------------------------------------------
-    // INICIO TABLA DE DOCUMENTOS UAFE
-    // -----------------------------------------------------------------------
-    $sql = "
-        SELECT 
-            u.id AS id_uafe,
-            u.titulo,
-            a.id AS id_adj,
-            a.ruta AS ruta_adj,
-            COALESCE(a.estado, 'PE') AS estado_adj,
-            a.fecha_entrega
-        FROM comercial.archivos_uafe u
-        LEFT JOIN comercial.adjuntos_clpv a
-            ON a.id_archivo_uafe = u.id
-            AND a.id_clpv = $id_clpv
-            AND a.id_empresa = $idempresa
-            AND a.estado <> 'AN'
-        WHERE u.empr_cod_empr = $idempresa
-          AND u.estado = 'AC'
-        ORDER BY u.id;
-    ";
+    $documentos = obtenerDocumentosUafeProveedor($idempresa, $id_clpv, $oCon);
+
     $html  = "<table class='table table-bordered table-hover' style='width:98%;'>";
-    // INICIO CABECERA DE LA TABLA
-    $html .= "
-        <tr>
-            <td colspan='8' style='padding:8px;'>
-                <div style='display:flex; justify-content:space-between; align-items:center;'>
-                    <h5 style='margin:0;'>ADJUNTOS <small>Documentos UAFE</small></h5>
+    $html .= "<tr class='active'>";
+    $html .= "<th style='width:5%;'>No.</th>";
+    $html .= "<th style='width:25%;'>Documento</th>";
+    $html .= "<th style='width:15%;'>Archivo</th>";
+    $html .= "<th style='width:15%;'>Fecha Entrega</th>";
+    $html .= "<th style='width:15%;'>Fecha Vencimiento</th>";
+    $html .= "<th style='width:10%;'>Estado</th>";
+    $html .= "<th style='width:10%; text-align:center;'>Cumplimiento</th>";
+    $html .= "<th style='width:5%; text-align:center;'>Acción</th>";
+    $html .= "</tr>";
 
-                    <button class='btn btn-primary btn-sm' onclick='guardarAdjuntosUAFE();'>
-                        <span class='glyphicon glyphicon-floppy-disk'></span> Guardar
-                    </button>
-                </div>
-            </td>
-        </tr>
-    ";
-
-    $html .= "
-        <tr class='bg-primary text-white'>
-            <th>No.</th>
-            <th>Documento</th>
-            <th>Archivo</th>
-            <th>Fecha Entrega</th>
-            <th>Fecha Vencimiento</th>
-            <th>Estado</th>
-            <th>Cumplimiento</th>
-            <th>Acción</th>
-        </tr>
-    ";
-    // FIN CABECERA DE LA TABLA
-
-
-    if ($oCon->Query($sql) && $oCon->NumFilas() > 0) {
-
+    if (count($documentos) > 0) {
         $i = 1;
-        $hoy = date("Y-m-d");
+        foreach ($documentos as $doc) {
+            $id_uafe = $doc['id_uafe'];
+            $titulo  = $doc['titulo'];
+            $id_adj  = $doc['id_adj'];
+            $rutaAdj = trim((string) $doc['ruta']);
+            $estado  = $doc['estado'] ?: 'PE';
 
-        do {
-            $id_uafe  = $oCon->f('id_uafe');
-            $id_adj   = $oCon->f('id_adj');
-            $titulo   = $oCon->f('titulo');
-            $estado   = $oCon->f('estado_adj');
-            $rutaAdj  = trim($oCon->f('ruta_adj'));
-            $fecEnt   = $oCon->f('fecha_entrega');
-
-            if (isset($_SESSION['uafeCambios'][$id_clpv][$id_uafe])) {
-                $estado = $_SESSION['uafeCambios'][$id_clpv][$id_uafe];
+            if ($doc['vencido'] && $estado === 'AC') {
+                $estado = 'VE';
             }
 
-            // Solo fecha
-            if ($fecEnt != "" && $fecEnt != NULL) {
-                $fecEnt = substr($fecEnt, 0, 10);
-            } else {
-                $fecEnt = "---";
-            }
+            $checked = ($estado === 'AC') ? 'checked' : '';
+            $fecEntMostrar = ($doc['fecha_entrega']) ? substr($doc['fecha_entrega'], 0, 10) : '---';
+            $fecVenc = $doc['fec_vencimiento_uafe'];
+            $fecVencMostrar = ($fecVenc) ? $fecVenc : '---';
 
-            // ========================================================
-            // CONTROL DE VENCIMIENTO (solo visual, NO BD)
-            // VE solo si el documento está ENTREGADO (AC)
-            // ========================================================
-            $estadoMostrar = $estado;
-
-            if (isset($_SESSION['uafeCambios'][$id_clpv][$id_uafe]) && $estadoMostrar !== $oCon->f('estado_adj')) {
-                $estadoMostrar .= ' (sin guardar)';
-            }
-
-            // Solo documentos entregados pueden vencer
-            if ($estado == 'AC') {
-                if ($fecVenc != "---" && $hoy > $fecVenc) {
-                    $estadoMostrar = "VE"; 
-                }
-            }
-
-            // CHECK
-            $checked = ($estado == 'AC') ? "checked" : "";
-
-            // Archivo
-            if ($rutaAdj != "") {
+            $link = "---";
+            if ($rutaAdj !== '') {
                 $rutaAdj = str_replace('../', '', $rutaAdj);
                 $ruta = "../../Include/Clases/Formulario/Plugins/reloj/$rutaAdj";
                 $link = "<a href='$ruta' target='_blank'>Ver archivo</a>";
-            } else {
-                $link = "---";
             }
 
-            // Botón eliminar
-            $btnEliminar = "
+            $btnEliminar = ($id_adj)
+                ? "
                 <button class='btn btn-danger btn-sm'
                     onclick=\"eliminarArchivoUAFE($id_uafe, $id_clpv, $id_adj);\">
                     <span class='glyphicon glyphicon-remove'></span>
                 </button>
-            ";
+            "
+                : "---";
 
             $html .= "
                 <tr>
                     <td>$i</td>
                     <td>$titulo</td>
                     <td>$link</td>
-                    <td>$fecEnt</td>
-                    <td>$fecVenc</td>
-                    <td>$estadoMostrar</td>
+                    <td>$fecEntMostrar</td>
+                    <td>$fecVencMostrar</td>
+                    <td>$estado</td>
                     <td align='center'>
                         <input type='checkbox' $checked
                             onclick=\"cambiarEstadoUafe($id_uafe, $id_clpv, this.checked)\">
@@ -8084,28 +8068,19 @@ function consultarAdjuntosUafe($aForm = '')
             ";
 
             $i++;
-
-        } while ($oCon->SiguienteRegistro());
+        }
+    } else {
+        $html .= "<tr><td colspan='8' align='center'><em>No existen documentos UAFE configurados.</em></td></tr>";
     }
 
     $html .= "</table>";
 
-    // -----------------------------------------------------------------------
-    // FIN TABLA DE DOCUMENTOS UAFE
-    // -----------------------------------------------------------------------
-
     $oReturn->assign("divReporteAdjuntosUafe", "innerHTML", $html);
 
-    $usaUafe = usaValidacionUAFE($idempresa, $oCon);
-    if ($usaUafe) {
-        $cumple   = proveedorCumpleUafe($idempresa, $id_clpv, $oCon);
-        $bloquear = !$cumple;
+    $cumple   = $usaUafe ? proveedorCumpleUafe($idempresa, $id_clpv, $oCon) : true;
+    $bloquear = $usaUafe ? !$cumple : false;
 
-        sincronizarEstadoProveedorPorUafe($idempresa, $id_clpv, $bloquear);
-
-        $oReturn->script("editar('" . ($bloquear ? 'PE' : 'AC') . "');");
-        $oReturn->script("habilitarEstadoProveedor(" . ($bloquear ? 'true' : 'false') . ");");
-    }
+    $oReturn->script("habilitarEstadoProveedor(" . ($bloquear ? 'true' : 'false') . ");");
 
     return $oReturn;
 }
@@ -8135,6 +8110,26 @@ function guardarAdjuntosUAFE($id_clpv)
 
         aplicarCambiosUafePendientes($idempresa, $idsucursal, $id_clpv, $oCon);
 
+        marcarAdjuntosUafeVencidos($idempresa, $id_clpv, $oCon);
+
+        $sqlLimpia = "
+            DELETE FROM comercial.adjuntos_clpv ac
+            USING (
+                SELECT id,
+                       ROW_NUMBER() OVER (PARTITION BY id_empresa, id_sucursal, id_clpv, id_archivo_uafe ORDER BY id DESC) AS rn
+                FROM comercial.adjuntos_clpv
+                WHERE id_empresa = $idempresa
+                  AND id_sucursal = $idsucursal
+                  AND id_clpv = $id_clpv
+                  AND id_archivo_uafe IS NOT NULL
+                  AND estado <> 'AN'
+            ) dup
+            WHERE ac.id = dup.id
+              AND dup.rn > 1;
+        ";
+
+        $oCon->QueryT($sqlLimpia);
+
         $oCon->QueryT("COMMIT;");
     } catch (Exception $e) {
         $oCon->QueryT("ROLLBACK;");
@@ -8160,11 +8155,17 @@ function guardarAdjuntosUAFE($id_clpv)
     $oReturn->script("editar('$estadoVisual');");
 
     if ($usaUafe) {
-        if ($cumpleDespues) {
+        if ($cumpleDespues && !$cumpliaAntes) {
             $mensaje = array(
                 'icon'  => 'success',
                 'title' => 'Documentos UAFE ENTREGADOS',
                 'text'  => 'Se cumplen con todos los documentos solicitados. El proveedor pasará a estado Activo.',
+            );
+        } elseif ($cumpleDespues && $cumpliaAntes) {
+            $mensaje = array(
+                'icon'  => 'success',
+                'title' => 'Documentos UAFE actualizados',
+                'text'  => 'Este proveedor tiene los documentos UAFE entregados y vigentes.',
             );
         } elseif ($cumpliaAntes && !$cumpleDespues) {
             $mensaje = array(
@@ -8188,7 +8189,7 @@ function guardarAdjuntosUAFE($id_clpv)
         });");
     }
 
-    $oReturn->script("consultarAdjuntosUafe();");
+    $oReturn->script("xajax_consultarAdjuntosUafe(xajax.getFormValues('form1'));");
 
     return $oReturn;
 }
@@ -8232,7 +8233,7 @@ function eliminarArchivoUAFE($id_uafe, $id_clpv, $id_adj)
             });
         ");
 
-        $oReturn->script("consultarAdjuntosUafe();");
+        $oReturn->script("xajax_consultarAdjuntosUafe(xajax.getFormValues('form1'));");
 
     } catch (Exception $e) {
         $oCon->QueryT("ROLLBACK;");
