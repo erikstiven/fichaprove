@@ -1226,7 +1226,7 @@ function genera_formulario_cliente($sAccion = 'nuevo', $aForm = '', $cod, $pedi)
 
                         <label>Activo</label><input type="radio" name="estado" id="AC" value="A" />
                                                 <label>Suspendido</label><input type="radio" name="estado" id="SU" value="S" />
-                                                <label>Pendiente</label><input type="radio" name="estado" id="PE" value="P" checked />
+                                                <label>Pendiente</label><input type="radio" name="estado" id="PE" value="P"  />
 
 
 					</td>
@@ -1460,6 +1460,20 @@ function genera_formulario_cliente($sAccion = 'nuevo', $aForm = '', $cod, $pedi)
             console.log('%c  usaUAFE: " . ($usaUAFE ? 't' : 'f') . "  (tipo: " . gettype($usaUAFE) . ")','color:cyan');
             console.log('%c  Condicion usaUAFE: ' + (" . ($usaUAFE ? 'true' : 'false') . "), 'color:cyan');
         ");
+
+        if ($sAccion == 'nuevo') {
+
+            if ($usaUAFE) {
+                // Con UAFE → nuevo proveedor = PENDIENTE + bloqueado
+                $oReturn->script("document.getElementById('PE').checked = true;");
+                $oReturn->script("habilitarEstadoProveedor(true);");
+            } else {
+                // Sin UAFE → nuevo proveedor = ACTIVO + habilitado
+                $oReturn->script("document.getElementById('AC').checked = true;");
+                $oReturn->script("habilitarEstadoProveedor(false);");
+            }
+        }
+
 
 
 
@@ -2305,9 +2319,9 @@ function seleccionaItem($aForm = '', $cliente = 0)
             }
 
             $oReturn->script('editar(\'' . $clpv_est_clpv . '\')');
-        } elseif ($sAccion == 'nuevo') {
-            $estadoNuevo = $usaUAFE ? 'PE' : 'AC';
-            $oReturn->script('editar(\'' . $estadoNuevo . '\')');
+        } else {
+            $clpv_est_clpv = 'PE';
+            $oReturn->script('editar(\'' . $clpv_est_clpv . '\')');
         }
 
 
