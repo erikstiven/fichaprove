@@ -7267,6 +7267,173 @@ function validarEstadoUAFEProveedor($id_clpv)
     return $oReturn;
 }
 
+function recalcularEstadosUafeGlobal()
+{
+    global $DSN;
+
+    if (session_status() !== PHP_SESSION_ACTIVE) {
+        session_start();
+    }
+
+    $oReturn = new xajaxResponse();
+
+    $idempresa = $_SESSION['U_EMPRESA'];
+
+    $oCon = new Dbo();
+    $oCon->DSN = $DSN;
+    $oCon->Conectar();
+
+    $oAux = new Dbo();
+    $oAux->DSN = $DSN;
+    $oAux->Conectar();
+
+    // Verificar si la empresa usa UAFE
+    $sqlUafeEmp = "
+        SELECT emmpr_uafe_cprov
+        FROM saeempr
+        WHERE empr_cod_empr = $idempresa;
+    ";
+
+    $usaUafe = consulta_string($sqlUafeEmp, 'emmpr_uafe_cprov', $oCon, 'f');
+
+    if ($usaUafe != 't') {
+        $mensaje = "<div class='alert alert-info'>La empresa actual no tiene habilitada la validación UAFE.</div>";
+        $oReturn->assign('resumenGlobalUafe', 'innerHTML', $mensaje);
+        $oReturn->assign('resumenGlobalUafe', 'style.display', '');
+        return $oReturn;
+    }
+
+    // Documentos UAFE requeridos
+    $sqlDocs = "
+        SELECT id
+        FROM comercial.archivos_uafe
+        WHERE empr_cod_empr = $idempresa
+          AND estado = 'AC';
+    ";
+
+    $docsRequeridos = [];
+
+    if ($oCon->Query($sqlDocs) && $oCon->NumFilas() > 0) {
+        do {
+            $docsRequeridos[] = intval($oCon->f('id'));
+        } while ($oCon->SiguienteRegistro());
+    }
+
+    if (count($docsRequeridos) === 0) {
+        $mensaje = "<div class='alert alert-warning'>No existen documentos UAFE activos configurados para esta empresa.</div>";
+        $oReturn->assign('resumenGlobalUafe', 'innerHTML', $mensaje);
+        $oReturn->assign('resumenGlobalUafe', 'style.display', '');
+        return $oReturn;
+    }
+
+    $sqlProv = "
+        SELECT clpv_cod_clpv, clpv_nom_clpv, clpv_est_clpv
+        FROM saeclpv
+        WHERE clpv_cod_empr = $idempresa;
+    ";
+
+    $evaluados = 0;
+    $cambiosActivo = 0;
+    $cambiosPendiente = 0;
+    $detalleCambios = [];
+    $hoy = date('Y-m-d');
+
+    if ($oCon->Query($sqlProv) && $oCon->NumFilas() > 0) {
+        do {
+            $id_clpv = intval($oCon->f('clpv_cod_clpv'));
+            $nombre  = trim($oCon->f('clpv_nom_clpv'));
+            $estadoActual = trim($oCon->f('clpv_est_clpv'));
+
+            $docsVigentes = 0;
+            $hayVencido = false;
+
+            $sqlDocsProveedor = "
+                SELECT
+                    u.id   AS id_uafe,
+                    a.estado,
+                    a.fecha_vencimiento
+                FROM comercial.archivos_uafe u
+                LEFT JOIN comercial.adjuntos_clpv a
+                    ON a.id_archivo_uafe = u.id
+                   AND a.id_clpv = $id_clpv
+                   AND a.id_empresa = $idempresa
+                   AND a.estado <> 'AN'
+                WHERE u.empr_cod_empr = $idempresa
+                  AND u.estado = 'AC'
+                ORDER BY u.id;
+            ";
+
+            if ($oAux->Query($sqlDocsProveedor) && $oAux->NumFilas() > 0) {
+                do {
+                    $estadoAdj = trim($oAux->f('estado'));
+                    $venc = $oAux->f('fecha_vencimiento');
+
+                    if ($estadoAdj === 'AC') {
+                        if (!empty($venc) && $venc < $hoy) {
+                            $hayVencido = true;
+                        } else {
+                            $docsVigentes++;
+                        }
+                    }
+                } while ($oAux->SiguienteRegistro());
+            }
+
+            $evaluados++;
+
+            $nuevoEstado = ($hayVencido || $docsVigentes < count($docsRequeridos)) ? 'P' : 'A';
+
+            if ($nuevoEstado !== $estadoActual) {
+                $sqlUpd = "
+                    UPDATE saeclpv
+                    SET clpv_est_clpv = '$nuevoEstado'
+                    WHERE clpv_cod_clpv = $id_clpv
+                      AND clpv_cod_empr = $idempresa;
+                ";
+
+                $oAux->Query($sqlUpd);
+
+                if ($nuevoEstado === 'A') {
+                    $cambiosActivo++;
+                } else {
+                    $cambiosPendiente++;
+                }
+
+                $detalleCambios[] = "[$id_clpv] $nombre: $estadoActual → $nuevoEstado";
+            }
+        } while ($oCon->SiguienteRegistro());
+    } else {
+        $mensaje = "<div class='alert alert-info'>No se encontraron proveedores para la empresa seleccionada.</div>";
+        $oReturn->assign('resumenGlobalUafe', 'innerHTML', $mensaje);
+        $oReturn->assign('resumenGlobalUafe', 'style.display', '');
+        return $oReturn;
+    }
+
+    $resumen = "";
+    $resumen .= "<p><strong>Proveedores evaluados:</strong> $evaluados</p>";
+    $resumen .= "<p><strong>Estados cambiados a ACTIVO:</strong> $cambiosActivo</p>";
+    $resumen .= "<p><strong>Estados cambiados a PENDIENTE:</strong> $cambiosPendiente</p>";
+
+    if (!empty($detalleCambios)) {
+        $resumen .= "<hr><p><strong>Detalle de cambios:</strong></p><ul>";
+        foreach ($detalleCambios as $detalle) {
+            $resumen .= "<li>$detalle</li>";
+        }
+        $resumen .= "</ul>";
+    }
+
+    $panel = "<div class='panel panel-warning'>" .
+             "<div class='panel-heading'>Recalculo GLOBAL UAFE</div>" .
+             "<div class='panel-body'>" . $resumen . "</div>" .
+             "</div>";
+
+    $oReturn->assign('resumenGlobalUafe', 'innerHTML', $panel);
+    $oReturn->assign('resumenGlobalUafe', 'style.display', '');
+    $oReturn->script("mostrarPestanaGlobalUafe();");
+    $oReturn->script("Swal.fire({icon:'success', title:'Recalculo GLOBAL UAFE', text:'Proveedores evaluados: $evaluados. Activos actualizados: $cambiosActivo. Pendientes actualizados: $cambiosPendiente.'});");
+
+    return $oReturn;
+}
+
 
 function agrega_modifica_gridAdj($nTipo = 0,  $aForm = '', $id = '', $total_fact = '')
 {
