@@ -85,6 +85,28 @@ if (isset($_REQUEST['codpedi'])) {
         #coords {
             width: 500px;
         }
+
+        /* Tab GLOBAL UAFE */
+        #pestanaGlobalUafe {
+            background: #f7e1b5;
+            border-radius: 4px 4px 0 0;
+        }
+
+        #pestanaGlobalUafe.tab-global-activo {
+            background: #f0ad4e;
+            border-bottom: 2px solid #d58512;
+        }
+
+        #pestanaGlobalUafe a {
+            color: #111;
+            font-weight: bold;
+        }
+
+        #contenidoPestanaGlobalUafe {
+            display: none;
+            width: 100%;
+            padding: 10px 5px;
+        }
     </style>
 
 
@@ -144,6 +166,9 @@ if (isset($_REQUEST['codpedi'])) {
                 // borde superior del contenido que esta justo debajo y se vea de este
                 // modo que esta seleccionada.
                 //alert("recupera");
+                $('#contenidoPestanaGlobalUafe').hide();
+                $('#pestanaGlobalUafe').removeClass('tab-global-activo');
+                $('#contenidopestanas').show();
                 $(cpestanna).css('display', '');
                 $(tpestanna).css('display', '');
                 $(pestanna).css('background', '#3783FE');
@@ -171,6 +196,37 @@ if (isset($_REQUEST['codpedi'])) {
         function consulta_cash(clpv) {
             xajax_consultar_cash(clpv);
         }
+
+        function mostrarPestanaGlobalUafe() {
+            $(document).ready(function() {
+                $('#contenidopestanas').hide();
+                $('#lista li').css('background', '');
+                $('#lista li').css('padding-bottom', '');
+                $('#contenidoPestanaGlobalUafe').show();
+                $('#pestanaGlobalUafe').addClass('tab-global-activo');
+            });
+        }
+
+        function confirmarRecalculoUafeGlobal() {
+            if (typeof Swal !== 'undefined') {
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'Proceso GLOBAL',
+                    text: 'Esta acción recalcula el estado UAFE de todos los proveedores. ¿Desea continuar?',
+                    confirmButtonText: 'Sí, recalcular',
+                    cancelButtonText: 'Cancelar',
+                    showCancelButton: true,
+                    reverseButtons: true
+                }).then((result) => {
+                    if (result.value) {
+                        xajax_recalcularEstadosUafeGlobal();
+                    }
+                });
+            } else if (confirm('Esta acción recalcula el estado UAFE de todos los proveedores. ¿Desea continuar?')) {
+                xajax_recalcularEstadosUafeGlobal();
+            }
+        }
+
 
         function edit_del_cash(id, exe, clpv) {
 
@@ -1377,6 +1433,11 @@ if (isset($_REQUEST['codpedi'])) {
                         <li id="pestana6"><a href='javascript:cambiarPestanna(pestanas,pestana6);'>PRODUCTOS</a></li>
                         <li id="pestana7"><a href='javascript:cambiarPestanna(pestanas,pestana7);'>LINEA DE NEGOCIO</a></li>
                         <li id="pestana8"><a href='javascript:cambiarPestanna(pestanas,pestana8);'>ADJUNTOS</a></li>
+                        <li id="pestanaGlobalUafe" class="tab-global-uafe">
+                            <a href='javascript:mostrarPestanaGlobalUafe();'>
+                                <span class="glyphicon glyphicon-retweet"></span> GLOBAL UAFE
+                            </a>
+                        </li>
                     </ul>
                 </div>
 
@@ -1458,6 +1519,24 @@ if (isset($_REQUEST['codpedi'])) {
                     </div>
 
                 </div>
+
+                <div id="contenidoPestanaGlobalUafe" class="tab-global-pane">
+                    <div class="alert alert-warning" role="alert">
+                        <strong>&#9888; Proceso GLOBAL</strong><br>
+                        Esta acción recalcula el estado UAFE de todos los proveedores.<br>
+                        No depende del proveedor seleccionado en la ficha.
+                    </div>
+                    <div class="well well-sm">
+                        <span class="glyphicon glyphicon-info-sign"></span> La operación es global y no modifica datos individuales de la ficha abierta.
+                    </div>
+                    <div class="text-center" style="margin-bottom:15px;">
+                        <button type="button" class="btn btn-warning" onclick="confirmarRecalculoUafeGlobal();">
+                            <span class="glyphicon glyphicon-retweet"></span> Recalcular estados UAFE (GLOBAL)
+                        </button>
+                    </div>
+                    <div id="resumenGlobalUafe" class="alert alert-info" role="alert" style="display:none;"></div>
+                </div>
+
 
                 <div style="width: 100%;">
                     <div class="modal fade" id="miModal" tabindex="-1" role="dialog" aria-labelledby="myModalLabel" aria-hidden="true"></div>
