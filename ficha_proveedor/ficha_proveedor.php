@@ -257,9 +257,50 @@ if (isset($_REQUEST['codpedi'])) {
             let SU = document.getElementById("SU");
             let PE = document.getElementById("PE");
 
-            if (!AC.disabled) AC.checked = (estado === "AC" || estado === "A");
-            if (!SU.disabled) SU.checked = (estado === "SU" || estado === "S");
-            if (!PE.disabled) PE.checked = (estado === "PE" || estado === "P");
+            if (estado === undefined || estado === null || estado === "") {
+                return;
+            }
+
+            const estadoNormalizado = estado;
+
+            AC.checked = (estadoNormalizado === "AC" || estadoNormalizado === "A");
+            SU.checked = (estadoNormalizado === "SU" || estadoNormalizado === "S");
+            PE.checked = (estadoNormalizado === "PE" || estadoNormalizado === "P");
+        }
+
+        function ajustarComboIdentificacion(valor, valorPadded) {
+            var select = document.getElementById('identificacion');
+            if (!select) {
+                return;
+            }
+
+            var candidatos = [];
+            if (valor !== undefined && valor !== null) {
+                candidatos.push(valor.toString());
+            }
+            if (valorPadded !== undefined && valorPadded !== null) {
+                candidatos.push(valorPadded.toString());
+            }
+
+            var valorNumerico = parseInt(valorPadded || valor, 10);
+            if (!isNaN(valorNumerico)) {
+                candidatos.push(valorNumerico.toString());
+            }
+
+            for (var i = 0; i < candidatos.length; i++) {
+                var candidato = candidatos[i];
+                if (!candidato) continue;
+                for (var j = 0; j < select.options.length; j++) {
+                    if (select.options[j].value == candidato) {
+                        select.value = candidato;
+                        $(select).trigger('change');
+                        if (typeof $(select).trigger === 'function') {
+                            $(select).trigger('chosen:updated');
+                        }
+                        return;
+                    }
+                }
+            }
         }
 
         function cerrar() {
@@ -572,7 +613,16 @@ if (isset($_REQUEST['codpedi'])) {
         }
 
         function seleccionaItem(id) {
+            const usaUafe = typeof window.usaUafeEmpresa !== 'undefined' ? window.usaUafeEmpresa : false;
+
+            if (usaUafe) {
+                habilitarEstadoProveedor(true);
+            }
             xajax_seleccionaItem(xajax.getFormValues("form1"), id);
+
+            if (usaUafe) {
+                xajax_validarEstadoUAFEProveedor(id);
+            }
         }
 
         function cargarDatosProd(a, b) {
